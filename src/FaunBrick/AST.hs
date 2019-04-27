@@ -1,7 +1,12 @@
-module FaunBrick.AST (Brick(..)) where
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE UndecidableInstances  #-}
+
+module FaunBrick.AST (Brick(..), FaunBrick) where
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
+
+type FaunBrick = [Brick]
 
 data Brick
   = Forward
@@ -11,6 +16,6 @@ data Brick
   | Put
   | Get
   | Loop [Brick]
-  deriving (Show, Generic)
+  deriving (Show, Generic, Eq)
 
 instance NFData Brick

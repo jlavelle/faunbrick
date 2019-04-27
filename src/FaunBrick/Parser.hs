@@ -7,14 +7,14 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Text (Text)
 
-import FaunBrick.AST (Brick(..))
+import FaunBrick.AST (Brick(..), FaunBrick)
 
-parseFile :: FilePath -> IO [Brick]
+parseFile :: FilePath -> IO FaunBrick
 parseFile p = either err id . parseFaunBrick <$> T.readFile p
   where
     err e = error $ "Parse error: " <> e
 
-parseFaunBrick :: Text -> Either String [Brick]
+parseFaunBrick :: Text -> Either String FaunBrick
 parseFaunBrick = parseOnly bricks . sanitize
 
 sanitize :: Text -> Text

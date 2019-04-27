@@ -17,7 +17,7 @@ import Data.Functor (($>))
 
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret
-import FaunBrick.AST (Brick)
+import FaunBrick.AST (FaunBrick)
 import FaunBrick.Parser (parseFile)
 
 runFile :: FilePath -> IO ()
@@ -26,7 +26,7 @@ runFile p = do
   b <- parseFile p
   void $ interpret f b
 
-interpret :: Foldable f => Faun -> f Brick -> IO Faun
+interpret :: Faun -> FaunBrick -> IO Faun
 interpret f = runInterpretIO . Interpret.interpret f
 
 newtype InterpretIO a = InterpretIO { runInterpretIO :: IO a }

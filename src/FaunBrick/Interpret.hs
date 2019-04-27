@@ -3,12 +3,12 @@ module FaunBrick.Interpret (interpret, foldFaunBrick) where
 import Control.Foldl (FoldM(..))
 import qualified Control.Foldl as F
 
-import FaunBrick.AST (Brick(..))
+import FaunBrick.AST (Brick(..), FaunBrick)
 import FaunBrick.MonadFaun (MonadFaun(..), forward, backward, add, sub)
 
 type FaunCtx e m = (Eq (Cell e), Num (Cell e), Num (Pointer e), MonadFaun e m)
 
-interpret :: (Foldable f, FaunCtx e m) => e -> f Brick -> m e
+interpret :: FaunCtx e m => e -> FaunBrick -> m e
 interpret e = F.foldM (foldFaunBrick e)
 
 foldFaunBrick :: FaunCtx e m => e -> FoldM m Brick e
@@ -26,7 +26,7 @@ step e' b = act e'
       Get -> input
       Loop bs -> loop bs
 
-loop :: (Foldable f, FaunCtx e m) => f Brick -> e -> m e
+loop :: FaunCtx e m => FaunBrick -> e -> m e
 loop bs e = do
   c <- readCurrentCell e
   if c == 0

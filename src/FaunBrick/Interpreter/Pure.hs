@@ -11,14 +11,14 @@ import Data.ByteString.Internal (c2w, w2c)
 
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret
-import FaunBrick.AST (Brick)
+import FaunBrick.AST (FaunBrick)
 import FaunBrick.Parser (parseFile)
 
 -- run a file with the given lazy Text input
 runFileWith :: Text -> FilePath -> IO (Either Error Faun)
 runFileWith t p = interpret (mkDefaultFaun t) <$> parseFile p
 
-interpret :: Foldable f => Faun -> f Brick -> Either Error Faun
+interpret :: Faun -> FaunBrick -> Either Error Faun
 interpret f = runIdentity . runExceptT . runPure . Interpret.interpret f
 
 newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
