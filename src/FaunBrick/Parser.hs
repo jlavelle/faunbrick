@@ -1,12 +1,18 @@
-module FaunBrick.Parser (parseFaunBrick) where
+module FaunBrick.Parser (parseFaunBrick, parseFile) where
 
 import Data.Attoparsec.Text
 import Data.Functor (($>), (<&>))
 import Data.Foldable (asum)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Data.Text (Text)
 
 import FaunBrick.AST (Brick(..))
+
+parseFile :: FilePath -> IO [Brick]
+parseFile p = either err id . parseFaunBrick <$> T.readFile p
+  where
+    err e = error $ "Parse error: " <> e
 
 parseFaunBrick :: Text -> Either String [Brick]
 parseFaunBrick = parseOnly bricks . sanitize

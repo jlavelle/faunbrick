@@ -12,22 +12,19 @@ import Data.Word (Word8)
 import GHC.IO.Handle (Handle, hPutChar, hGetChar)
 import System.IO (stdin, stdout)
 import Data.ByteString.Internal (c2w, w2c)
-import qualified Data.Text.IO as T
 import Control.Monad (void)
 import Data.Functor (($>))
 
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret
 import FaunBrick.AST (Brick)
-import FaunBrick.Parser (parseFaunBrick)
+import FaunBrick.Parser (parseFile)
 
 runFile :: FilePath -> IO ()
 runFile p = do
   f <- defaultFaun
-  r <- parseFaunBrick <$> T.readFile p
-  void $ either err (interpret f) r
-  where
-    err e = error $ "Parse error: " <> e
+  b <- parseFile p
+  void $ interpret f b
 
 interpret :: Foldable f => Faun -> f Brick -> IO Faun
 interpret f = runInterpretIO . Interpret.interpret f
@@ -40,10 +37,10 @@ newtype InterpretIO a = InterpretIO { runInterpretIO :: IO a }
            )
 
 data Faun = Faun
-  { brickByteArray :: !(IOVector Word8)
-  , brickPointer   :: !(IORef Int)
-  , brickInHandle  :: !Handle
-  , brickOutHandle :: !Handle
+  { faunByteArray :: !(IOVector Word8)
+  , faunPointer   :: !(IORef Int)
+  , faunInHandle  :: !Handle
+  , faunOutHandle :: !Handle
   }
 
 instance MonadFaun Faun InterpretIO where
@@ -73,8 +70,8 @@ instance MonadFaun Faun InterpretIO where
 
 defaultFaun :: IO Faun
 defaultFaun = do
-  brickByteArray <- MV.replicate 30000 0
-  brickPointer   <- newIORef 0
-  let brickInHandle  = stdin
-      brickOutHandle = stdout
+  faunByteArray <- MV.replicate 30000 0
+  faunPointer   <- newIORef 0
+  let faunInHandle  = stdin
+      faunOutHandle = stdout
   pure $ Faun {..}
