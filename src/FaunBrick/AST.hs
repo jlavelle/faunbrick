@@ -1,5 +1,8 @@
 module FaunBrick.AST (Brick(..)) where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
+
 data Brick
   = Forward
   | Backward
@@ -8,4 +11,6 @@ data Brick
   | Put
   | Get
   | Loop [Brick]
-  deriving Show
+  deriving (Show, Generic)
+
+instance NFData Brick

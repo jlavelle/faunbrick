@@ -1,4 +1,6 @@
-module FaunBrick.Interpreter.Pure where
+module FaunBrick.Interpreter.Pure (
+  interpret, runFileWith, Faun(..), mkDefaultFaun
+) where
 
 import Control.Monad.Except (MonadError, ExceptT, liftEither, throwError, runExceptT)
 import Data.Functor.Identity (Identity(..))
@@ -12,8 +14,9 @@ import qualified FaunBrick.Interpret as Interpret
 import FaunBrick.AST (Brick)
 import FaunBrick.Parser (parseFile)
 
+-- run a file with the given lazy Text input
 runFileWith :: Text -> FilePath -> IO (Either Error Faun)
-runFileWith t p = interpret (defaultFaun t) <$> parseFile p
+runFileWith t p = interpret (mkDefaultFaun t) <$> parseFile p
 
 interpret :: Foldable f => Faun -> f Brick -> Either Error Faun
 interpret f = runIdentity . runExceptT . runPure . Interpret.interpret f
@@ -81,8 +84,8 @@ diffMove f t =
     LT -> leftN (x - y) t
     _  -> Right t
 
-defaultFaun :: Text -> Faun
-defaultFaun i = Faun
+mkDefaultFaun :: Text -> Faun
+mkDefaultFaun i = Faun
   { faunTape = Tape [] 0 $ replicate 29999 0
   , faunOut  = mempty
   , faunIn   = i

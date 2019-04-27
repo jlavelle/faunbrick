@@ -22,7 +22,7 @@ dependencies:
 - vector
 - primitive
 - foldl
-- criterion
+- deepseq
 
 ghc-options:
 - -Wall
@@ -83,6 +83,17 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - faunbrick
+  bench:
+    main:                Main.hs
+    source-dirs:         bench
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - faunbrick
+    - criterion
+    - text
 
 tests:
   faunbrick-test:
