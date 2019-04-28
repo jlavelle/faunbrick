@@ -18,12 +18,13 @@ import Data.Functor (($>))
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret
 import FaunBrick.AST (FaunBrick)
+import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFile)
 
 runFile :: FilePath -> IO ()
 runFile p = do
   f <- defaultFaun
-  b <- parseFile p
+  b <- optimize <$> parseFile p
   void $ interpret f b
 
 interpret :: Faun -> FaunBrick -> IO Faun

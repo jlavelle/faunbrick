@@ -4,8 +4,7 @@ import Control.Foldl (FoldM(..))
 import qualified Control.Foldl as F
 
 import FaunBrick.AST (Brick(..), FaunBrick)
-import FaunBrick.AST.Optimize (optimize)
-import FaunBrick.MonadFaun (MonadFaun(..), forward, backward, add, sub, modifyCell)
+import FaunBrick.MonadFaun (MonadFaun(..), forward, backward, add, sub, modifyCell, modifyPointer)
 
 type FaunCtx e m = (Eq (Cell e), Num (Cell e), Num (Pointer e), MonadFaun e m)
 
@@ -27,6 +26,7 @@ step e' b = act e'
       Get -> input
       Loop bs -> loop bs
       Update i -> modifyCell (+ fromIntegral i)
+      Jump i -> flip modifyPointer (+ fromIntegral i)
 
 loop :: FaunCtx e m => FaunBrick -> e -> m e
 loop bs e = do

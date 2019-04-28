@@ -7,14 +7,25 @@ import FaunBrick.AST (Brick(..), FaunBrick)
 type Optimization = FaunBrick -> FaunBrick
 
 optimize :: Optimization
-optimize = combineUpdates
+optimize = combineJumps
+         . combineUpdates
 
 combineUpdates :: Optimization
 combineUpdates = foldMap go . groupBy (==)
   where
     go [] = []
     go a@(x:_) = let l = length a in case x of
-      Add    -> [ Update $ l  ]
-      Sub    -> [ Update $ -l ]
+      Add    -> [ Update l ]
+      Sub    -> [ Update (-l) ]
       Loop _ -> [ Loop $ combineUpdates brs | (Loop brs) <- a ]
       _      -> a
+
+combineJumps :: Optimization
+combineJumps = foldMap go . groupBy (==)
+  where
+    go [] = []
+    go a@(x:_) = let l = length a in case x of
+      Forward  -> [ Jump l ]
+      Backward -> [ Jump (-l) ]
+      Loop _   -> [ Loop $ combineJumps brs | (Loop brs) <- a ]
+      _        -> a
