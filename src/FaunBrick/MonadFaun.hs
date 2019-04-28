@@ -8,7 +8,7 @@ module FaunBrick.MonadFaun (
 ) where
 
 -- Abstract interface for a FaunBrick interpreter
-class Monad m => MonadFaun e m | m -> e where
+class Monad m => MonadFaun e m where
   type Pointer e
   type Cell e
   readCurrentCell  :: e -> m (Cell e)

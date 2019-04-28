@@ -4,6 +4,7 @@ import Criterion.Main
 import qualified Data.Text.IO as T
 import Data.Text (Text)
 import qualified Data.Text.Lazy as LT
+import Data.Word (Word8)
 
 import FaunBrick.AST (FaunBrick)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
@@ -38,7 +39,7 @@ setupInterpEnv :: IO FaunBrick
 setupInterpEnv = parseFile "programs/lorem.b"
 
 interpretPure :: FaunBrick -> LT.Text
-interpretPure = either err Pure.faunOut . Pure.interpret faun
+interpretPure = either err Pure.faunOut . (Pure.interpret @Word8) faun
   where
     faun  = Pure.mkDefaultFaun ""
     err e = error $ "Interpreter error: " <> show e
