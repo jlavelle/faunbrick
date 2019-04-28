@@ -9,6 +9,7 @@ type Optimization = FaunBrick -> FaunBrick
 optimize :: Optimization
 optimize = combineJumps
          . combineUpdates
+         . makeClears
 
 combineUpdates :: Optimization
 combineUpdates = foldMap go . groupBy (==)
@@ -29,3 +30,15 @@ combineJumps = foldMap go . groupBy (==)
       Backward -> [ Jump (-l) ]
       Loop _   -> [ Loop $ combineJumps brs | (Loop brs) <- a ]
       _        -> a
+
+makeClears :: Optimization
+makeClears = fmap go
+  where
+    go op = case op of
+      Loop ls -> clr
+        where
+          clr = case ls of
+            [Sub] -> Clear
+            [Add] -> Clear
+            _     -> Loop $ makeClears ls
+      _ -> op

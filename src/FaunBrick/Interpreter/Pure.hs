@@ -6,7 +6,6 @@ import Control.Monad.Except (MonadError, ExceptT, liftEither, throwError, runExc
 import Data.Functor.Identity (Identity(..))
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as T
-import Data.ByteString.Internal (c2w, w2c)
 
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret

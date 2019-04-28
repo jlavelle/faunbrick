@@ -27,6 +27,7 @@ step e' b = act e'
       Loop bs -> loop bs
       Update i -> modifyCell (+ fromIntegral i)
       Jump i -> flip modifyPointer (+ fromIntegral i)
+      Clear -> flip writeCurrentCell 0
 
 loop :: FaunCtx e m => FaunBrick -> e -> m e
 loop bs e = do

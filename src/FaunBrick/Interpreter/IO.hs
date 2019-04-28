@@ -7,13 +7,11 @@ module FaunBrick.Interpreter.IO (
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Vector.Generic.Mutable as MV
 import Data.Vector.Primitive.Mutable (IOVector)
-import Data.IORef (IORef, readIORef, modifyIORef, newIORef)
 import Data.Word (Word8)
 import GHC.IO.Handle (Handle, hPutChar, hGetChar)
 import System.IO (stdin, stdout)
 import Data.ByteString.Internal (c2w, w2c)
 import Control.Monad (void, unless)
-import Data.Functor (($>))
 
 import FaunBrick.MonadFaun (MonadFaun(..))
 import qualified FaunBrick.Interpret as Interpret

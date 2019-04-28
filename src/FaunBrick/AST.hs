@@ -18,6 +18,7 @@ data Brick
   | Loop [Brick]
   | Update Int
   | Jump Int
+  | Clear
   deriving (Show, Generic, Eq)
 
 instance NFData Brick
