@@ -7,26 +7,28 @@ import qualified Data.Text.Lazy as LT
 import Data.Word (Word8)
 
 import FaunBrick.AST (FaunBrick)
+import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
 import qualified FaunBrick.Interpreter.Pure as Pure
 import qualified FaunBrick.Interpreter.IO as IO
 
 main :: IO ()
 main = defaultMain
-  [ env setupParseEnv $ \ ~(simple, fib, lorem) -> bgroup "Parser"
-    [ bench "parse simple.b" $ whnf parseFaunBrick simple
-    , bench "parse fib.b"    $ whnf parseFaunBrick fib
-    , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
-    ]
-  , env setupInterpEnv $ \ ~(lorem, mandel) -> bgroup "Interpreters"
+  [ -- env setupParseEnv $ \ ~(simple, fib, lorem) -> bgroup "Parser"
+    -- [ bench "parse simple.b" $ whnf parseFaunBrick simple
+    -- , bench "parse fib.b"    $ whnf parseFaunBrick fib
+    -- , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
+    -- ]
+    env setupInterpEnv $ \ ~(lorem, loremO) -> bgroup "Interpreters"
     [ bgroup "Pure"
       [ bench "interpret lorem.b"  $ nf interpretPure lorem
-      , bench "interpret mandel.b" $ nf interpretPure mandel
+      , bench "interpret lorem.b with optimizations" $ nf interpretPure loremO
+      -- , bench "interpret mandel.b" $ nf interpretPure mandel
       ]
-    , bgroup "IO"
-      [ bench "interpret lorem.b"  $ whnfAppIO interpretIO lorem
-      , bench "interpret mandel.b" $ whnfAppIO interpretIO mandel
-      ]
+    --, bgroup "IO"
+    --  [ bench "interpret lorem.b"  $ whnfAppIO interpretIO lorem
+      -- , bench "interpret mandel.b" $ whnfAppIO interpretIO mandel
+     -- ]
     ]
   ]
 
@@ -41,7 +43,7 @@ setupInterpEnv :: IO (FaunBrick, FaunBrick)
 setupInterpEnv = do
   l <- parseFile "programs/lorem.b"
   m <- parseFile "programs/mandel.b"
-  pure (l, m)
+  pure (l, optimize l)
 
 interpretPure :: FaunBrick -> LT.Text
 interpretPure = either err Pure.faunOut . (Pure.interpret @Word8) faun

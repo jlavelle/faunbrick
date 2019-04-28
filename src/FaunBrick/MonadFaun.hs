@@ -17,8 +17,8 @@ class Monad m => MonadFaun e m where
   input            :: e -> m e
   output           :: e -> m e
 
-modifyCell :: MonadFaun e m => e -> (Cell e -> Cell e) -> m e
-modifyCell e f = readCurrentCell e >>= writeCurrentCell e . f
+modifyCell :: MonadFaun e m => (Cell e -> Cell e) -> e -> m e
+modifyCell f e = readCurrentCell e >>= writeCurrentCell e . f
 
 forward :: (Num (Pointer e), MonadFaun e m) => e -> m e
 forward e = modifyPointer e (+ 1)
@@ -27,7 +27,7 @@ backward :: (Num (Pointer e), MonadFaun e m) => e -> m e
 backward e = modifyPointer e (subtract 1)
 
 add :: (Num (Cell e), MonadFaun e m) => e -> m e
-add e = modifyCell e (+ 1)
+add e = modifyCell (+ 1) e
 
 sub :: (Num (Cell e), MonadFaun e m) => e -> m e
-sub e = modifyCell e (subtract 1)
+sub e = modifyCell (subtract 1) e
