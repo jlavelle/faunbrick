@@ -18,12 +18,14 @@ main = defaultMain
     , bench "parse fib.b"    $ whnf parseFaunBrick fib
     , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
     ]
-  , env setupInterpEnv $ \lorem -> bgroup "Interpreters"
+  , env setupInterpEnv $ \ ~(lorem, mandel) -> bgroup "Interpreters"
     [ bgroup "Pure"
-      [ bench "interpret lorem.b" $ nf interpretPure lorem
+      [ bench "interpret lorem.b"  $ nf interpretPure lorem
+      , bench "interpret mandel.b" $ nf interpretPure mandel
       ]
     , bgroup "IO"
-      [ bench "interpret lorem.b" $ whnfAppIO interpretIO lorem
+      [ bench "interpret lorem.b"  $ whnfAppIO interpretIO lorem
+      , bench "interpret mandel.b" $ whnfAppIO interpretIO mandel
       ]
     ]
   ]
@@ -35,8 +37,11 @@ setupParseEnv = do
   l <- T.readFile "programs/lorem.b"
   pure (s, f, l)
 
-setupInterpEnv :: IO FaunBrick
-setupInterpEnv = parseFile "programs/lorem.b"
+setupInterpEnv :: IO (FaunBrick, FaunBrick)
+setupInterpEnv = do
+  l <- parseFile "programs/lorem.b"
+  m <- parseFile "programs/mandel.b"
+  pure (l, m)
 
 interpretPure :: FaunBrick -> LT.Text
 interpretPure = either err Pure.faunOut . (Pure.interpret @Word8) faun
