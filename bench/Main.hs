@@ -8,6 +8,7 @@ import qualified Data.Text.Lazy as LT
 import FaunBrick.AST (FaunBrick)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
 import qualified FaunBrick.Interpreter.Pure as Pure
+import qualified FaunBrick.Interpreter.IO as IO
 
 main :: IO ()
 main = defaultMain
@@ -16,8 +17,13 @@ main = defaultMain
     , bench "parse fib.b"    $ whnf parseFaunBrick fib
     , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
     ]
-  , env setupInterpEnv $ \lorem -> bgroup "Pure Interpreter"
-    [ bench "interpret lorem.b" $ whnf interpretPure lorem
+  , env setupInterpEnv $ \lorem -> bgroup "Interpreters"
+    [ bgroup "Pure"
+      [ bench "interpret lorem.b" $ nf interpretPure lorem
+      ]
+    , bgroup "IO"
+      [ bench "interpret lorem.b" $ whnfAppIO interpretIO lorem
+      ]
     ]
   ]
 
@@ -36,3 +42,9 @@ interpretPure = either err Pure.faunOut . Pure.interpret faun
   where
     faun  = Pure.mkDefaultFaun ""
     err e = error $ "Interpreter error: " <> show e
+
+interpretIO :: FaunBrick -> IO IO.Faun
+interpretIO b = quietFaun >>= \f -> IO.interpret f b
+
+quietFaun :: IO IO.Faun
+quietFaun = (\f -> f { IO.faunQuiet = True }) <$> IO.defaultFaun

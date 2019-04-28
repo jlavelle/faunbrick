@@ -12,7 +12,7 @@ import Data.Word (Word8)
 import GHC.IO.Handle (Handle, hPutChar, hGetChar)
 import System.IO (stdin, stdout)
 import Data.ByteString.Internal (c2w, w2c)
-import Control.Monad (void)
+import Control.Monad (void, unless)
 import Data.Functor (($>))
 
 import FaunBrick.MonadFaun (MonadFaun(..))
@@ -38,40 +38,39 @@ newtype InterpretIO a = InterpretIO { runInterpretIO :: IO a }
 
 data Faun = Faun
   { faunByteArray :: !(IOVector Word8)
-  , faunPointer   :: !(IORef Int)
+  , faunPointer   :: !Int
   , faunInHandle  :: !Handle
   , faunOutHandle :: !Handle
+  , faunQuiet     :: !Bool
   }
 
 instance MonadFaun Faun InterpretIO where
   type Pointer Faun = Int
   type Cell Faun = Word8
 
-  readCurrentCell (Faun v i _ _) = liftIO $ readIORef i >>= MV.read v
+  readCurrentCell (Faun v i _ _ _) = liftIO $ MV.read v i
 
-  modifyPointer e@(Faun _ i _ _) f = liftIO $ modifyIORef i f $> e
+  modifyPointer e f = pure $ e { faunPointer = f $ faunPointer e }
 
-  writeCurrentCell e@(Faun v i _ _) c = liftIO $ do
-    idx <- readIORef i
-    MV.write v idx c
+  writeCurrentCell e@(Faun v i _ _ _) c = liftIO $ do
+    MV.write v i c
     pure e
 
-  input e@(Faun v i ih _) = liftIO $ do
-    idx <- readIORef i
+  input e@(Faun v i ih _ _) = liftIO $ do
     c <- c2w <$> hGetChar ih
-    MV.write v idx c
+    MV.write v i c
     pure e
 
-  output e@(Faun v i _ oh) = liftIO $ do
-    idx <- readIORef i
-    c <- w2c <$> MV.read v idx
-    hPutChar oh c
+  output e@(Faun v i _ oh q) = liftIO $ do
+    c <- w2c <$> MV.read v i
+    unless q $ hPutChar oh c
     pure e
 
 defaultFaun :: IO Faun
 defaultFaun = do
   faunByteArray <- MV.replicate 30000 0
-  faunPointer   <- newIORef 0
-  let faunInHandle  = stdin
+  let faunPointer = 0
+      faunInHandle  = stdin
       faunOutHandle = stdout
+      faunQuiet = False
   pure $ Faun {..}
