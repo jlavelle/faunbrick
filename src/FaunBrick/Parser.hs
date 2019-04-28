@@ -1,24 +1,27 @@
 module FaunBrick.Parser (parseFaunBrick, parseFile) where
 
-import Data.Attoparsec.Text
+import Data.Attoparsec.Text.Lazy
 import Data.Functor (($>), (<&>))
 import Data.Foldable (asum)
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
-import Data.Text (Text)
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.IO as LT
+import Data.Text.Lazy (Text)
 
 import FaunBrick.AST (Brick(..), FaunBrick)
 
 parseFile :: FilePath -> IO FaunBrick
-parseFile p = either err id . parseFaunBrick <$> T.readFile p
+parseFile p = either err id . parseFaunBrick <$> LT.readFile p
   where
     err e = error $ "Parse error: " <> e
 
 parseFaunBrick :: Text -> Either String FaunBrick
-parseFaunBrick = parseOnly bricks . sanitize
+parseFaunBrick = toEither . parse bricks . sanitize
+  where
+    toEither (Done _ r)   = Right r
+    toEither (Fail _ _ s) = Left s
 
 sanitize :: Text -> Text
-sanitize = T.filter (`elem` ['>', '<', '+', '-', '.', ',', '[', ']'])
+sanitize = LT.filter (`elem` ['>', '<', '+', '-', '.', ',', '[', ']'])
 
 bricks :: Parser [Brick]
 bricks = many1 brick
