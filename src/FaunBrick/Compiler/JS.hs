@@ -40,7 +40,7 @@ top Options{..} = "let p = " <> B.decimal initialOffset <> eol
 encodeFaunBrick :: Options -> FaunBrick -> Builder
 encodeFaunBrick Options{..} x = top Options{..} <> encode 0 x
   where
-    encode n b = foldMap (indent n . go) b
+    encode n = foldMap (indent n . go)
       where
         go Forward    = "p++" <> eol
         go Backward   = "p--" <> eol
@@ -57,4 +57,4 @@ eol :: Builder
 eol = ";\n"
 
 indent :: Int -> Builder -> Builder
-indent n b = fold (replicate (n * 2) $ " ") <> b
+indent n b = fold (replicate (n * 2) " ") <> b

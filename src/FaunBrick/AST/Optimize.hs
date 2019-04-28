@@ -1,6 +1,6 @@
 module FaunBrick.AST.Optimize where
 
-import Data.List (groupBy)
+import Data.List (group)
 
 import FaunBrick.AST (Brick(..), FaunBrick)
 
@@ -12,7 +12,7 @@ optimize = combineJumps
          . makeClears
 
 combineUpdates :: Optimization
-combineUpdates = foldMap go . groupBy (==)
+combineUpdates = foldMap go . group
   where
     go [] = []
     go a@(x:_) = let l = length a in case x of
@@ -22,7 +22,7 @@ combineUpdates = foldMap go . groupBy (==)
       _      -> a
 
 combineJumps :: Optimization
-combineJumps = foldMap go . groupBy (==)
+combineJumps = foldMap go . group
   where
     go [] = []
     go a@(x:_) = let l = length a in case x of
@@ -35,10 +35,8 @@ makeClears :: Optimization
 makeClears = fmap go
   where
     go op = case op of
-      Loop ls -> clr
-        where
-          clr = case ls of
-            [Sub] -> Clear
-            [Add] -> Clear
-            _     -> Loop $ makeClears ls
+      Loop ls -> case ls of
+        [Sub] -> Clear
+        [Add] -> Clear
+        _     -> Loop $ makeClears ls
       _ -> op

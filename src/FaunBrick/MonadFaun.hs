@@ -27,7 +27,7 @@ backward :: (Num (Pointer e), MonadFaun e m) => e -> m e
 backward e = modifyPointer e (subtract 1)
 
 add :: (Num (Cell e), MonadFaun e m) => e -> m e
-add e = modifyCell (+ 1) e
+add = modifyCell (+ 1)
 
 sub :: (Num (Cell e), MonadFaun e m) => e -> m e
-sub e = modifyCell (subtract 1) e
+sub = modifyCell (subtract 1)
