@@ -1,42 +1,36 @@
 module FaunBrick.AST.Optimize where
 
-import Data.List (group)
+import Data.Functor.Foldable (cata, embed)
 
-import FaunBrick.AST (Brick(..), FaunBrick)
+import FaunBrick.AST.Util (group, single)
+import FaunBrick.AST
 
-type Optimization = FaunBrick -> FaunBrick
+type Optimization = Program -> Program
 
 optimize :: Optimization
-optimize = combineJumps
-         . combineUpdates
-         . makeClears
+optimize = combineInstrs . makeClears
 
-combineUpdates :: Optimization
-combineUpdates = foldMap go . group
+combineInstrs :: Optimization
+combineInstrs = cata go . group
   where
-    go [] = []
-    go a@(x:_) = let l = length a in case x of
-      Add    -> [ Update l ]
-      Sub    -> [ Update (-l) ]
-      Loop _ -> [ Loop $ combineUpdates brs | (Loop brs) <- a ]
-      _      -> a
+    go :: FaunBrickF Program Program -> Program
+    go HaltF = Halt
+    go (InstrF g r)  = comb g <> r
+    go (LoopF as bs) = Loop as bs
 
-combineJumps :: Optimization
-combineJumps = foldMap go . group
-  where
-    go [] = []
-    go a@(x:_) = let l = length a in case x of
-      Forward  -> [ Jump l ]
-      Backward -> [ Jump (-l) ]
-      Loop _   -> [ Loop $ combineJumps brs | (Loop brs) <- a ]
+    comb :: Optimization
+    comb a@(Instr x _) = let l = length a in case x of
+      Add      -> single $ Update l
+      Sub      -> single $ Update (-l)
+      Forward  -> single $ Jump l
+      Backward -> single $ Jump (-l)
       _        -> a
+    comb _ = error "Optimizer: Unexpected input to comb."
 
 makeClears :: Optimization
-makeClears = fmap go
+makeClears = cata go
   where
-    go op = case op of
-      Loop ls -> case ls of
-        [Sub] -> Clear
-        [Add] -> Clear
-        _     -> Loop $ makeClears ls
-      _ -> op
+    go :: FaunBrickF Instruction Program -> Program
+    go (LoopF (Instr Add Halt) r) = Instr Clear r
+    go (LoopF (Instr Sub Halt) r) = Instr Clear r
+    go x = embed x

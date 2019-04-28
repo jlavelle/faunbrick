@@ -1,20 +1,22 @@
 module FaunBrick.Parser (parseFaunBrick, parseFile) where
 
 import Data.Attoparsec.Text.Lazy
-import Data.Functor (($>), (<&>))
-import Data.Foldable (asum)
+import Data.Functor (($>))
+import Data.Foldable (asum, fold)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
 import Data.Text.Lazy (Text)
+import Control.Applicative ((<|>))
 
-import FaunBrick.AST (Brick(..), FaunBrick)
+import FaunBrick.AST (FaunBrick(..), Instruction(..))
+import FaunBrick.AST.Util (single)
 
-parseFile :: FilePath -> IO FaunBrick
+parseFile :: FilePath -> IO (FaunBrick Instruction)
 parseFile p = either err id . parseFaunBrick <$> LT.readFile p
   where
     err e = error $ "Parse error: " <> e
 
-parseFaunBrick :: Text -> Either String FaunBrick
+parseFaunBrick :: Text -> Either String (FaunBrick Instruction)
 parseFaunBrick = toEither . parse bricks . sanitize
   where
     toEither (Done _ r)   = Right r
@@ -23,38 +25,41 @@ parseFaunBrick = toEither . parse bricks . sanitize
 sanitize :: Text -> Text
 sanitize = LT.filter (`elem` ['>', '<', '+', '-', '.', ',', '[', ']'])
 
-bricks :: Parser [Brick]
-bricks = many1 brick
+bricks :: Parser (FaunBrick Instruction)
+bricks = fold <$> many1 brick
 
-brick :: Parser Brick
-brick = asum
+brick :: Parser (FaunBrick Instruction)
+brick = (single <$> instruction) <|> loop
+
+loop :: Parser (FaunBrick Instruction)
+loop = l <$> (char '[' *> bricks <* char ']')
+  where
+    l i = Loop i Halt
+
+instruction :: Parser Instruction
+instruction = asum
   [ forward
   , backward
   , add
   , sub
   , put
   , get
-  , loop
   ]
 
-forward :: Parser Brick
+forward :: Parser Instruction
 forward = char '>' $> Forward
 
-backward :: Parser Brick
+backward :: Parser Instruction
 backward = char '<' $> Backward
 
-add :: Parser Brick
+add :: Parser Instruction
 add = char '+' $> Add
 
-sub :: Parser Brick
+sub :: Parser Instruction
 sub = char '-' $> Sub
 
-put :: Parser Brick
+put :: Parser Instruction
 put = char '.' $> Put
 
-get :: Parser Brick
+get :: Parser Instruction
 get = char ',' $> Get
-
-loop :: Parser Brick
-loop = char '[' *> manyTill brick (char ']') <&> Loop
-

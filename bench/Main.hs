@@ -1,58 +1,55 @@
 module Main where
 
 import Criterion.Main
-import qualified Data.Text.IO as T
-import Data.Text (Text)
-import qualified Data.Text.Lazy as LT
-import Data.Word (Word8)
+import qualified Data.Text.Lazy.IO as LT
+import Data.Text.Lazy (Text)
+import Data.Functor ((<&>))
 
-import FaunBrick.AST (FaunBrick)
+import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
-import qualified FaunBrick.Interpreter.Pure as Pure
-import qualified FaunBrick.Interpreter.IO as IO
+import FaunBrick.Interpreter (interpretPure', interpret)
+import FaunBrick.Interpreter.Types (TextHandle(..), UnsafeTextHandle(..))
+import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem)
 
 main :: IO ()
 main = defaultMain
-  [ -- env setupParseEnv $ \ ~(simple, fib, lorem) -> bgroup "Parser"
-    -- [ bench "parse simple.b" $ whnf parseFaunBrick simple
-    -- , bench "parse fib.b"    $ whnf parseFaunBrick fib
-    -- , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
-    -- ]
-    env setupInterpEnv $ \ ~(lorem, loremO) -> bgroup "Interpreters"
+  [ env setupParseEnv $ \ ~(simple, fib, lorem) -> bgroup "Parser"
+    [ bench "parse simple.b" $ whnf parseFaunBrick simple
+    , bench "parse fib.b"    $ whnf parseFaunBrick fib
+    , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
+    ]
+  , env setupInterpEnv $ \ ~(lorem, loremO) -> bgroup "Interpreters"
     [ bgroup "Pure"
-      [ bench "interpret lorem.b"  $ nf interpretPure lorem
-      , bench "interpret lorem.b with optimizations" $ nf interpretPure loremO
-      -- , bench "interpret mandel.b" $ nf interpretPure mandel
+      [ bench "interpret lorem.b"  $ nf interpretPureOut lorem
+      , bench "interpret lorem.b with optimizations" $ nf interpretPureOut loremO
       ]
-    --, bgroup "IO"
-    --  [ bench "interpret lorem.b"  $ whnfAppIO interpretIO lorem
-      -- , bench "interpret mandel.b" $ whnfAppIO interpretIO mandel
-     -- ]
+    , bgroup "IO"
+      [ bench "interpret lorem.b"  $ whnfAppIO interpretIO'' lorem
+      , bench "interpret lorem.b with optimizations" $ whnfAppIO interpretIO'' loremO
+      ]
     ]
   ]
 
 setupParseEnv :: IO (Text, Text, Text)
 setupParseEnv = do
-  s <- T.readFile "programs/simple.b"
-  f <- T.readFile "programs/fib.b"
-  l <- T.readFile "programs/lorem.b"
+  s <- LT.readFile "programs/simple.b"
+  f <- LT.readFile "programs/fib.b"
+  l <- LT.readFile "programs/lorem.b"
   pure (s, f, l)
 
-setupInterpEnv :: IO (FaunBrick, FaunBrick)
+setupInterpEnv :: IO (Program, Program)
 setupInterpEnv = do
   l <- parseFile "programs/lorem.b"
-  m <- parseFile "programs/mandel.b"
   pure (l, optimize l)
 
-interpretPure :: FaunBrick -> LT.Text
-interpretPure = either err Pure.faunOut . (Pure.interpret @Word8) faun
+interpretPureOut :: Program -> Text
+interpretPureOut p = case interpretPure' p of
+  Left e -> error $ "Benchmark: Interpretation error " <> show e
+  Right (_, TextHandle o _) -> o
+
+interpretIO'' :: Program -> IO Text
+interpretIO'' p = defaultMVecMem >>= \m -> interpret m unsafeHandle p <&> f . snd
   where
-    faun  = Pure.mkDefaultFaun ""
-    err e = error $ "Interpreter error: " <> show e
-
-interpretIO :: FaunBrick -> IO IO.Faun
-interpretIO b = quietFaun >>= \f -> IO.interpret f b
-
-quietFaun :: IO IO.Faun
-quietFaun = (\f -> f { IO.faunQuiet = True }) <$> IO.defaultFaun
+    f (UnsafeTextHandle (TextHandle o _)) = o
+    unsafeHandle = UnsafeTextHandle defaultTextHandle
