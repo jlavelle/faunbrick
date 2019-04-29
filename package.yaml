@@ -24,7 +24,7 @@ dependencies:
 - foldl
 - deepseq
 - recursion-schemes
-- streams
+- time
 
 ghc-options:
 - -Wall

@@ -78,6 +78,7 @@ instance MonadIO m => Handle IOHandle m where
   output h@(IOHandle o _) a = liftIO $ GHC.hPutChar o (wordToChar a) $> h
   input  h@(IOHandle _ i) = liftIO $ (,h) . charToWord <$> GHC.hGetChar i
 
+-- TODO: Figure out why this behaves strangely
 data TextHandle = TextHandle LT.Text LT.Text
 
 instance MonadError Error m => Handle TextHandle m where
