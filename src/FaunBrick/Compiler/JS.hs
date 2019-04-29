@@ -27,8 +27,8 @@ data Options = Options
 
 defaultOptions :: Options
 defaultOptions = Options
-  { memorySize    = 30000
-  , initialOffset = 0
+  { memorySize    = 31000
+  , initialOffset = 1000
   , outFunc       = "out"
   , inFunc        = "in"
   }

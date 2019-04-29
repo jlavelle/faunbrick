@@ -28,9 +28,9 @@ main = do
   runFile "programs/mandel.b"
   t' <- getCurrentTime
   putStrLn $ "Runtime: " <> show (diffUTCTime t' t)
-  putStrLn "99 Bottles - Pure"
+  putStrLn "Mandelbrot - Pure"
   t'' <- getCurrentTime
   putStrLn $ "Started at " <> show t''
-  runFilePure "programs/bottles.b"
+  runFilePure "programs/mandel.b"
   t''' <- getCurrentTime
   putStrLn $ "Runtime: " <> show (diffUTCTime t''' t'')
