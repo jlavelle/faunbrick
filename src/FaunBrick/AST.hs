@@ -1,7 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module FaunBrick.AST where
 
+import Data.Data (Data)
 import GHC.Exts (IsList(..))
 import GHC.Generics (Generic, Generic1)
 import Control.DeepSeq (NFData, NFData1)
@@ -57,7 +59,7 @@ data Instruction
   | Jump Int
   | Clear
   | Mul Int Int
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Show, Generic, Data)
 
 instance NFData Instruction
 

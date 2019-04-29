@@ -1,5 +1,6 @@
 module FaunBrick.AST.Util where
 
+import Data.Data (toConstr)
 import Data.Monoid (Sum(..))
 import Data.Functor.Foldable (cata)
 
@@ -31,6 +32,10 @@ instrSum = getSum . foldMap (Sum . go)
     go (Update n) = n
     go (Jump n)   = n
     go _ = 0
+
+-- Eq that ignores the numeric values contained in the instructions
+instrEq :: Instruction -> Instruction -> Bool
+instrEq a b = toConstr a == toConstr b
 
 -- Test if a program only contains arithmetic operations (Update/Jump)
 arithmetic :: Program -> Maybe [Instruction]

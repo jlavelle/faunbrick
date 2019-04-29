@@ -4,7 +4,7 @@ import Data.Functor.Foldable (cata, embed)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
 
-import FaunBrick.AST.Util (group, single, instrSum, arithmetic)
+import FaunBrick.AST.Util (groupBy, single, instrSum, arithmetic, instrEq)
 import FaunBrick.AST
 
 type Optimization = Program -> Program
@@ -13,7 +13,7 @@ optimize :: Optimization
 optimize = mulLoop . combineInstrs . makeClears
 
 combineInstrs :: Optimization
-combineInstrs = cata go . group
+combineInstrs = cata go . groupBy instrEq
   where
     go :: FaunBrickF Program Program -> Program
     go HaltF = Halt
