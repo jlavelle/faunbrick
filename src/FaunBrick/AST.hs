@@ -56,6 +56,7 @@ data Instruction
   | Update Int
   | Jump Int
   | Clear
+  | Mul Int Int
   deriving (Eq, Show, Generic)
 
 instance NFData Instruction

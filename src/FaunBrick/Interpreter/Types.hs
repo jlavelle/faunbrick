@@ -28,9 +28,9 @@ data MVecMem = MVecMem (IOVector Word8) Int
 
 instance MonadIO m => Memory MVecMem m where
   type Cell MVecMem = Word8
-  readCell (MVecMem v i) = liftIO $ MV.read v i
+  readCell (MVecMem v i) = liftIO $ MV.unsafeRead v i
   movePointer (MVecMem v i) f = pure $ MVecMem v $ f i
-  writeCell e@(MVecMem v i) a = liftIO $ MV.write v i a $> e
+  writeCell e@(MVecMem v i) a = liftIO $ MV.unsafeWrite v i a $> e
 
 data Tape a = Tape [a] a [a] deriving Show
 

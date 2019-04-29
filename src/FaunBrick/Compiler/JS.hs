@@ -9,7 +9,7 @@ import qualified Data.Text.Lazy.Builder as B
 import qualified Data.Text.Lazy.Builder.Int as B
 import Data.Foldable (fold)
 
-import FaunBrick.AST (FaunBrick(..), FaunBrickF(..), Instruction(..), Program)
+import FaunBrick.AST (FaunBrick(..), Instruction(..), Program)
 import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFile)
 
@@ -63,6 +63,7 @@ encode Options{..} i = case i of
   Update n   -> "m[p] += " <> B.decimal n <> eol
   Jump n     -> "p += " <> B.decimal n <> eol
   Clear      -> "m[p] = 0" <> eol
+  Mul o n    -> "m[p + " <> B.decimal o <> "] += m[p] * " <> B.decimal n <> eol
 
 eol :: Builder
 eol = ";\n"

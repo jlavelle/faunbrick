@@ -37,9 +37,18 @@ step e h i = case i of
   Update n -> (,h) <$> modifyCell e (+ fromIntegral n)
   Jump n   -> (,h) <$> movePointer e (+ n)
   Clear    -> (,h) <$> writeCell e 0
+  Mul o n  -> (,h) <$> offsetMod e o (* fromIntegral n)
 
 modifyCell :: (Memory e m, Monad m) => e -> (Cell e -> Cell e) -> m e
 modifyCell e f = readCell e >>= writeCell e . f
+
+-- TODO: Memory should support this directly
+offsetMod :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> (Cell e -> Cell e) -> m e
+offsetMod e o f = do
+  c <- readCell e
+  e1 <- movePointer e (+ o)
+  e2 <- modifyCell e1 (+ f c)
+  movePointer e2 (subtract o)
 
 writeOutput :: InterpretM e h m => e -> h -> m (e, h)
 writeOutput e h = fmap (e,) $ readCell e >>= output h

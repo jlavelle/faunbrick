@@ -1,6 +1,7 @@
 module FaunBrick.AST.Util where
 
 import Data.Monoid (Sum(..))
+import Data.Functor.Foldable (cata)
 
 import FaunBrick.AST
 
@@ -30,3 +31,13 @@ instrSum = getSum . foldMap (Sum . go)
     go (Update n) = n
     go (Jump n)   = n
     go _ = 0
+
+-- Test if a program only contains arithmetic operations (Update/Jump)
+arithmetic :: Program -> Maybe [Instruction]
+arithmetic = cata go
+  where
+    go :: FaunBrickF Instruction (Maybe [Instruction]) -> Maybe [Instruction]
+    go HaltF = Just []
+    go (InstrF i@(Update _) r) = (i:) <$> r
+    go (InstrF i@(Jump _) r)   = (i:) <$> r
+    go _ = Nothing
