@@ -2,13 +2,13 @@ module FaunBrick.AST.Optimize where
 
 import Data.Functor.Foldable (cata, embed)
 
-import FaunBrick.AST.Util (group, single)
+import FaunBrick.AST.Util (group, single, instrSum)
 import FaunBrick.AST
 
 type Optimization = Program -> Program
 
 optimize :: Optimization
-optimize = combineInstrs . makeClears
+optimize = makeClears . combineInstrs
 
 combineInstrs :: Optimization
 combineInstrs = cata go . group
@@ -20,10 +20,8 @@ combineInstrs = cata go . group
 
     comb :: Optimization
     comb a@(Instr x _) = let l = length a in case x of
-      Add      -> single $ Update l
-      Sub      -> single $ Update (-l)
-      Forward  -> single $ Jump l
-      Backward -> single $ Jump (-l)
+      Update _ -> single $ Update $ instrSum a
+      Jump _   -> single $ Jump   $ instrSum a
       _        -> a
     comb _ = error "Optimizer: Unexpected input to comb."
 
@@ -31,6 +29,5 @@ makeClears :: Optimization
 makeClears = cata go
   where
     go :: FaunBrickF Instruction Program -> Program
-    go (LoopF (Instr Add Halt) r) = Instr Clear r
-    go (LoopF (Instr Sub Halt) r) = Instr Clear r
+    go (LoopF (Instr (Update _) Halt) r) = Instr Clear r
     go x = embed x

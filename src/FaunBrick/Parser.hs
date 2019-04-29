@@ -47,16 +47,16 @@ instruction = asum
   ]
 
 forward :: Parser Instruction
-forward = char '>' $> Forward
+forward = char '>' $> Jump 1
 
 backward :: Parser Instruction
-backward = char '<' $> Backward
+backward = char '<' $> Jump (-1)
 
 add :: Parser Instruction
-add = char '+' $> Add
+add = char '+' $> Update 1
 
 sub :: Parser Instruction
-sub = char '-' $> Sub
+sub = char '-' $> Update (-1)
 
 put :: Parser Instruction
 put = char '.' $> Put

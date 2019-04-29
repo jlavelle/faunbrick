@@ -1,5 +1,7 @@
 module FaunBrick.AST.Util where
 
+import Data.Monoid (Sum(..))
+
 import FaunBrick.AST
 
 groupBy :: (a -> a -> Bool) -> FaunBrick a -> FaunBrick (FaunBrick a)
@@ -21,3 +23,10 @@ group = groupBy (==)
 
 single :: a -> FaunBrick a
 single a = Instr a Halt
+
+instrSum :: Program -> Int
+instrSum = getSum . foldMap (Sum . go)
+  where
+    go (Update n) = n
+    go (Jump n)   = n
+    go _ = 0

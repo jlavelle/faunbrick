@@ -51,11 +51,7 @@ fromProgView :: ProgView a -> FaunBrick a
 fromProgView = fromList . runProgView
 
 data Instruction
-  = Forward
-  | Backward
-  | Add
-  | Sub
-  | Put
+  = Put
   | Get
   | Update Int
   | Jump Int

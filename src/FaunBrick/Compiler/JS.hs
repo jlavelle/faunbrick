@@ -58,14 +58,10 @@ compile o@Options{..} x = top o <> go x 0 <> bottom
 
 encode :: Options -> Instruction -> Builder
 encode Options{..} i = case i of
-  Forward    -> "p++" <> eol
-  Backward   -> "p--" <> eol
-  Add        -> "m[p] += 1" <> eol
-  Sub        -> "m[p] -= 1" <> eol
   Put        -> B.fromText outFunc <> "(m[p])" <> eol
   Get        -> B.fromText inFunc <> "(m, p)" <> eol
-  (Update n) -> "m[p] += " <> B.decimal n <> eol
-  (Jump n)   -> "p += " <> B.decimal n <> eol
+  Update n   -> "m[p] += " <> B.decimal n <> eol
+  Jump n     -> "p += " <> B.decimal n <> eol
   Clear      -> "m[p] = 0" <> eol
 
 eol :: Builder
