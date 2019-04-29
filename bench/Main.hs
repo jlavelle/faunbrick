@@ -25,8 +25,8 @@ main = defaultMain
       , bench "interpret lorem.b with optimizations" $ nf interpretPureOut loremO
       ]
     , bgroup "IO"
-      [ bench "interpret lorem.b"  $ whnfAppIO interpretIO'' lorem
-      , bench "interpret lorem.b with optimizations" $ whnfAppIO interpretIO'' loremO
+      [ bench "interpret lorem.b"  $ nfAppIO interpretIO'' lorem
+      , bench "interpret lorem.b with optimizations" $ nfAppIO interpretIO'' loremO
       ]
     ]
   ]
