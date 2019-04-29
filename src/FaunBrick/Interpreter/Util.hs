@@ -18,4 +18,7 @@ defaultTextHandle :: TextHandle
 defaultTextHandle = TextHandle mempty mempty
 
 defaultIOHandle :: IOHandle
-defaultIOHandle = IOHandle stdout stdin
+defaultIOHandle = IOHandle
+  { ioHandleIn  = stdin
+  , ioHandleOut = stdout
+  }

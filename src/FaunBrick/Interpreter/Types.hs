@@ -70,34 +70,38 @@ class Handle h m where
   output :: h -> Out h -> m h
   input  :: h -> m (Out h, h)
 
---                       out        in
-data IOHandle = IOHandle GHC.Handle GHC.Handle
+data IOHandle = IOHandle
+  { ioHandleIn  :: GHC.Handle
+  , ioHandleOut :: GHC.Handle
+  }
 
 instance MonadIO m => Handle IOHandle m where
   type Out IOHandle = Word8
-  output h@(IOHandle o _) a = liftIO $ GHC.hPutChar o (wordToChar a) $> h
-  input  h@(IOHandle _ i) = liftIO $ (,h) . charToWord <$> GHC.hGetChar i
+  output h@(IOHandle _ o) a = liftIO $ GHC.hPutChar o (wordToChar a) $> h
+  input  h@(IOHandle i _) = liftIO $ (,h) . charToWord <$> GHC.hGetChar i
 
--- TODO: Figure out why this behaves strangely
-data TextHandle = TextHandle LT.Text LT.Text
+data TextHandle = TextHandle
+  { textHandleIn  :: LT.Text
+  , textHandleOut :: LT.Text
+  }
 
 instance MonadError Error m => Handle TextHandle m where
   type Out TextHandle = Word8
-  output t = pure . textHandleOut t
-  input = fromMaybe (throwError NoInput) . fmap pure . textHandleIn
+  output t = pure . thOut t
+  input = fromMaybe (throwError NoInput) . fmap pure . thIn
 
 newtype UnsafeTextHandle = UnsafeTextHandle TextHandle
 
 instance Monad m => Handle UnsafeTextHandle m where
   type Out UnsafeTextHandle = Word8
-  output (UnsafeTextHandle t) = pure . UnsafeTextHandle . textHandleOut t
-  input (UnsafeTextHandle t)  = pure $ UnsafeTextHandle <$> fromJust (textHandleIn t)
+  output (UnsafeTextHandle t) = pure . UnsafeTextHandle . thOut t
+  input (UnsafeTextHandle t)  = pure $ UnsafeTextHandle <$> fromJust (thIn t)
 
-textHandleOut :: TextHandle -> Word8 -> TextHandle
-textHandleOut (TextHandle i o) a = TextHandle (LT.snoc o $ wordToChar a) i
+thOut :: TextHandle -> Word8 -> TextHandle
+thOut (TextHandle i o) a = TextHandle i (LT.snoc o $ wordToChar a)
 
-textHandleIn :: TextHandle -> Maybe (Word8, TextHandle)
-textHandleIn (TextHandle i o) = case LT.uncons i of
+thIn :: TextHandle -> Maybe (Word8, TextHandle)
+thIn (TextHandle i o) = case LT.uncons i of
   Just (a, r) -> Just (charToWord a, TextHandle o r)
   Nothing -> Nothing
 

@@ -16,7 +16,7 @@ runFile p = void $ optimize <$> parseFile p >>= interpretIO'
 runFilePure :: FilePath -> IO ()
 runFilePure p = void $ interpretPure' . optimize <$> parseFile p >>= f
   where
-    f (Right (_, TextHandle o _)) = T.putStrLn o
+    f (Right (_, t)) = T.putStrLn $ textHandleOut t
     f (Left e) = error $ "runFilePure: Interpreter error " <> show e
 
 main :: IO ()

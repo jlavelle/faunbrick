@@ -46,10 +46,10 @@ setupInterpEnv = do
 interpretPureOut :: Program -> Text
 interpretPureOut p = case interpretPure' p of
   Left e -> error $ "Benchmark: Interpretation error " <> show e
-  Right (_, TextHandle o _) -> o
+  Right (_, t) -> textHandleOut t
 
 interpretIO'' :: Program -> IO Text
 interpretIO'' p = defaultMVecMem >>= \m -> interpret m unsafeHandle p <&> f . snd
   where
-    f (UnsafeTextHandle (TextHandle o _)) = o
+    f (UnsafeTextHandle t) = textHandleOut t
     unsafeHandle = UnsafeTextHandle defaultTextHandle
