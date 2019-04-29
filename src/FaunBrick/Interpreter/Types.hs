@@ -9,6 +9,7 @@ import qualified Data.Vector.Generic.Mutable as MV
 import qualified GHC.IO.Handle as GHC
 import Data.Word (Word8)
 import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as B
 import Data.Functor (($>))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.ByteString.Internal (c2w, w2c)
@@ -82,7 +83,7 @@ instance MonadIO m => Handle IOHandle m where
 
 data TextHandle = TextHandle
   { textHandleIn  :: LT.Text
-  , textHandleOut :: LT.Text
+  , textHandleOut :: B.Builder
   }
 
 instance MonadError Error m => Handle TextHandle m where
@@ -98,11 +99,11 @@ instance Monad m => Handle UnsafeTextHandle m where
   input (UnsafeTextHandle t)  = pure $ UnsafeTextHandle <$> fromJust (thIn t)
 
 thOut :: TextHandle -> Word8 -> TextHandle
-thOut (TextHandle i o) a = TextHandle i (LT.snoc o $ wordToChar a)
+thOut (TextHandle i o) a = TextHandle i $ o <> B.singleton (wordToChar a)
 
 thIn :: TextHandle -> Maybe (Word8, TextHandle)
 thIn (TextHandle i o) = case LT.uncons i of
-  Just (a, r) -> Just (charToWord a, TextHandle o r)
+  Just (a, r) -> Just (charToWord a, TextHandle r o)
   Nothing -> Nothing
 
 -- TODO: Don't use internal Bytestring functions
