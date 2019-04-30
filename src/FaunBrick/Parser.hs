@@ -53,13 +53,13 @@ backward :: Parser Instruction
 backward = char '<' $> Jump (-1)
 
 add :: Parser Instruction
-add = char '+' $> Update 1
+add = char '+' $> Update 0 1
 
 sub :: Parser Instruction
-sub = char '-' $> Update (-1)
+sub = char '-' $> Update 0 (-1)
 
 put :: Parser Instruction
-put = char '.' $> Put
+put = char '.' $> Put 0
 
 get :: Parser Instruction
-get = char ',' $> Get
+get = char ',' $> Get 0

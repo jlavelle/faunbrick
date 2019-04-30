@@ -52,13 +52,18 @@ toProgView = ProgView . toList
 fromProgView :: ProgView a -> FaunBrick a
 fromProgView = fromList . runProgView
 
+type Offset = Int
+type Source = Offset
+type Dest = Offset
+
 data Instruction
-  = Put
-  | Get
-  | Update Int
-  | Jump Int
-  | Clear
-  | Mul Int Int
+  = Put Offset                -- output(m[p + offset])
+  | Get Offset                -- input(m, p + offset)
+  | Update Offset Int         -- m[p + offset] += v
+  | Jump Int                  -- p += v
+  | Set Offset Int            -- m[p + offset] = v
+  | MulUpdate Source Dest Int -- m[p + dest] += m[p + source] * v
+  | MulSet Source Dest Int    -- m[p + dest]  = m[p + source] * v
   deriving (Eq, Show, Generic, Data)
 
 instance NFData Instruction

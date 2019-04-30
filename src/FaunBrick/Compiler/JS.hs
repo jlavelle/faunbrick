@@ -58,12 +58,29 @@ compile o@Options{..} x = top o <> go x 0 <> bottom
 
 encode :: Options -> Instruction -> Builder
 encode Options{..} i = case i of
-  Put        -> B.fromText outFunc <> "(m[p])" <> eol
-  Get        -> B.fromText inFunc <> "(m, p)" <> eol
-  Update n   -> "m[p] += " <> B.decimal n <> eol
-  Jump n     -> "p += " <> B.decimal n <> eol
-  Clear      -> "m[p] = 0" <> eol
-  Mul o n    -> "m[p + " <> B.decimal o <> "] += m[p] * " <> B.decimal n <> eol
+  Put o -> B.fromText outFunc <> bracket (memAccess o) <> eol
+  Get o -> B.fromText inFunc <> bracket ("m, p + " <> B.decimal o) <> eol
+  Update o n -> memAccess o <> plusEq n <> eol
+  Jump n -> "p" <> plusEq n <> eol
+  Set o n -> memAccess o <> " = " <> B.decimal n <> eol
+  MulUpdate s d n -> mulExpr s d n " += " <> eol
+  MulSet s d n -> mulExpr s d n " = " <> eol
+
+mulExpr :: Int -> Int -> Int -> Builder -> Builder
+mulExpr s d n op = memAccess d <> op <> memAccess s <> " * " <> B.decimal n
+
+-- e.g. memAccess 1 = "m[p + 1]"
+memAccess :: Int -> Builder
+memAccess n | n > 0 = "m[p + " <> B.decimal n <> "]"
+            | n < 0 = "m[p - " <> B.decimal (abs n) <> "]"
+            | otherwise = "m[p]"
+
+bracket :: Builder -> Builder
+bracket b = "(" <> b <> ")"
+
+plusEq :: Int -> Builder
+plusEq n | n >= 0 = " += " <> B.decimal n
+         | otherwise = " -= " <> B.decimal (abs n)
 
 eol :: Builder
 eol = ";\n"

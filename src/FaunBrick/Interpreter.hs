@@ -32,15 +32,31 @@ interpret e h (Loop bs r) = loop bs e h >>= \(e', h') -> interpret e' h' r
 
 step :: InterpretM e h m => e -> h -> Instruction -> m (e, h)
 step e h i = case i of
-  Put      -> writeOutput e h
-  Get      -> readInput e h
-  Update n -> (,h) <$> modifyCell e (+ fromIntegral n)
-  Jump n   -> (,h) <$> movePointer e (+ n)
-  Clear    -> (,h) <$> writeCell e 0
-  Mul o n  -> (,h) <$> offsetMod e o (* fromIntegral n)
+  Put 0 -> writeOutput e h
+  Get 0 -> readInput e h
+  Update 0 n -> (,h) <$> modifyCell e (+ fromIntegral n)
+  Jump n -> (,h) <$> movePointer e (+ n)
+  Set 0 n -> (,h) <$> writeCell e (fromIntegral n)
+  MulUpdate 0 o n -> (,h) <$> mulUpdate e o n
+  MulSet 0 o n -> (,h) <$> mulSet e o n
+  _ -> error "Interpreter: interpreter does not support command offset optimization."
 
 modifyCell :: (Memory e m, Monad m) => e -> (Cell e -> Cell e) -> m e
 modifyCell e f = readCell e >>= writeCell e . f
+
+mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> m e
+mulUpdate e o n = do
+  c <- readCell e
+  e1 <- movePointer e (+ o)
+  e2 <- modifyCell e1 (\c' -> c' + c * fromIntegral n)
+  movePointer e2 (subtract o)
+
+mulSet :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> m e
+mulSet e o n = do
+  c <- readCell e
+  e1 <- movePointer e (+ o)
+  e2 <- writeCell e1 (c * fromIntegral n)
+  movePointer e2 (subtract o)
 
 -- TODO: Memory should support this directly
 offsetMod :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> (Cell e -> Cell e) -> m e
