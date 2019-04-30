@@ -7,7 +7,7 @@ import Control.Monad ((>=>))
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
 
-import FaunBrick.AST.Util (groupBy, single, instrSum, arithmetic, instrEq)
+import FaunBrick.AST.Util (groupBy, single, instrSum, arithmetic, instrEq, addOffset)
 import FaunBrick.AST
 
 type Optimization = Program -> Program
@@ -69,6 +69,7 @@ fuse = histo go
     go x@(InstrF (Set o 0) (_ :< (InstrF (MulUpdate s d n) r)))
       | o == d = Instr (MulSet s d n) $ extract r
       | otherwise = embedC x
+
     go x = embedC x
 
     fuseWithSet :: Instruction -> Maybe Offset
@@ -95,7 +96,7 @@ loopsToMul = cata go
     computeDelta :: (IntMap Int, Int) -> Instruction -> (IntMap Int, Int)
     computeDelta (deltas, offset) = \case
 
-      -- Updates change the value at the current offset
+      -- Updates change the value at the current offset + their offset
       Update o n ->
         let deltas' = M.insertWith (+) (offset + o) n deltas
         in (deltas', offset)
@@ -118,6 +119,25 @@ loopsToMul = cata go
         -- entry's key
         buildMul off val = single $ MulUpdate 0 off val
 
+-- Delays pointer movement to the end of a block by computing the offset
+-- that each instruction operates on.
+offsets :: Optimization
+offsets = cata go . groupBy (\_ _ -> True)
+  where
+    go :: FaunBrickF Program Program -> Program
+    go HaltF = Halt
+    go (LoopF as bs) = Loop as bs
+    go (InstrF program r) =
+      let (program', offset) = foldl computeOffset (mempty, 0) program
+          jump = if offset == 0 then Halt else single (Jump offset)
+      in program' <> jump <> r
+
+    computeOffset :: (Program, Int) -> Instruction -> (Program, Int)
+    computeOffset (program, offset) = \case
+      Jump n -> (program, offset + n)
+      x ->
+        let program' = program <> single (addOffset offset x)
+        in (program', offset)
 
 embedC :: Corecursive t => Base t (Cofree (Base t) t) -> t
 embedC = embed . fmap extract

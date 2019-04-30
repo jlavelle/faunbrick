@@ -35,6 +35,16 @@ instrSum = getSum . foldMap (Sum . go)
       Set _ n -> n
       _ -> 0
 
+addOffset :: Int -> Instruction -> Instruction
+addOffset x = \case
+  Output o -> Output $ o + x
+  Input o  -> Input $ o + x
+  Update o n -> Update (o + x) n
+  Set o n -> Set (o + x) n
+  MulUpdate s d n -> MulUpdate (s + x) (d + x) n
+  MulSet s d n -> MulSet (s + x) (d + x) n
+  Jump n -> Jump n
+
 -- Eq that ignores the numeric values contained in the instructions and compares offsets
 instrEq :: Instruction -> Instruction -> Bool
 instrEq a b = toConstr a == toConstr b && offsets a == offsets b

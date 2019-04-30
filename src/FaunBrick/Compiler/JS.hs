@@ -10,16 +10,19 @@ import qualified Data.Text.Lazy.Builder.Int as B
 import Data.Foldable (fold)
 
 import FaunBrick.AST (FaunBrick(..), Instruction(..), Program)
-import FaunBrick.AST.Optimize (optimize, Optimization)
+import FaunBrick.AST.Optimize
 import FaunBrick.Parser (parseFile)
 
 compileFile' :: FilePath -> FilePath -> IO ()
-compileFile' = compileFile optimize defaultOptions
+compileFile' = compileFile defaultOptimization defaultOptions
 
 compileFile :: Optimization -> Options -> FilePath -> FilePath -> IO ()
 compileFile opt o from to = do
   src <- opt <$> parseFile from
   LT.writeFile to $ B.toLazyText $ compile o src
+
+defaultOptimization :: Optimization
+defaultOptimization = eqFix $ offsets . loopsToMul . elimClears . fuse . contract
 
 data Options = Options
   { memorySize    :: Int
