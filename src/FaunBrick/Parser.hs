@@ -59,7 +59,7 @@ sub :: Parser Instruction
 sub = char '-' $> Update 0 (-1)
 
 put :: Parser Instruction
-put = char '.' $> Put 0
+put = char '.' $> Output 0
 
 get :: Parser Instruction
-get = char ',' $> Get 0
+get = char ',' $> Input 0

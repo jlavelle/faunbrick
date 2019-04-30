@@ -32,6 +32,7 @@ instrSum = getSum . foldMap (Sum . go)
     go = \case
       Update _ n -> n
       Jump n -> n
+      Set _ n -> n
       _ -> 0
 
 -- Eq that ignores the numeric values contained in the instructions and compares offsets
@@ -40,8 +41,8 @@ instrEq a b = toConstr a == toConstr b && offsets a == offsets b
 
 offsets :: Instruction -> Maybe (Either Int (Int, Int))
 offsets = \case
-  Put o -> Just $ Left o
-  Get o -> Just $ Left o
+  Output o -> Just $ Left o
+  Input o -> Just $ Left o
   Update o _ -> Just $ Left o
   Set o _ -> Just $ Left o
   MulUpdate s d _ -> Just $ Right (s, d)
@@ -49,11 +50,11 @@ offsets = \case
   Jump _ -> Nothing
 
 -- Test if a program only contains arithmetic operations (Update/Jump)
-arithmetic :: Program -> Maybe [Instruction]
+arithmetic :: Program -> Maybe Program
 arithmetic = cata go
   where
-    go :: FaunBrickF Instruction (Maybe [Instruction]) -> Maybe [Instruction]
-    go HaltF = Just []
-    go (InstrF i@(Update _ _) r) = (i:) <$> r
-    go (InstrF i@(Jump _) r)   = (i:) <$> r
+    go :: FaunBrickF Instruction (Maybe Program) -> Maybe Program
+    go HaltF = Just Halt
+    go (InstrF i@(Update _ _) r) = Instr i <$> r
+    go (InstrF i@(Jump _) r) = Instr i <$> r
     go _ = Nothing

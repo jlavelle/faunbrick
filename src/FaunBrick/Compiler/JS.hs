@@ -10,12 +10,15 @@ import qualified Data.Text.Lazy.Builder.Int as B
 import Data.Foldable (fold)
 
 import FaunBrick.AST (FaunBrick(..), Instruction(..), Program)
-import FaunBrick.AST.Optimize (optimize)
+import FaunBrick.AST.Optimize (optimize, Optimization)
 import FaunBrick.Parser (parseFile)
 
-compileFile :: Options -> FilePath -> FilePath -> IO ()
-compileFile o from to = do
-  src <- optimize <$> parseFile from
+compileFile' :: FilePath -> FilePath -> IO ()
+compileFile' = compileFile optimize defaultOptions
+
+compileFile :: Optimization -> Options -> FilePath -> FilePath -> IO ()
+compileFile opt o from to = do
+  src <- opt <$> parseFile from
   LT.writeFile to $ B.toLazyText $ compile o src
 
 data Options = Options
@@ -58,8 +61,8 @@ compile o@Options{..} x = top o <> go x 0 <> bottom
 
 encode :: Options -> Instruction -> Builder
 encode Options{..} i = case i of
-  Put o -> B.fromText outFunc <> bracket (memAccess o) <> eol
-  Get o -> B.fromText inFunc <> bracket ("m, p + " <> B.decimal o) <> eol
+  Output o -> B.fromText outFunc <> bracket (memAccess o) <> eol
+  Input o -> B.fromText inFunc <> bracket ("m, p + " <> B.decimal o) <> eol
   Update o n -> memAccess o <> plusEq n <> eol
   Jump n -> "p" <> plusEq n <> eol
   Set o n -> memAccess o <> " = " <> B.decimal n <> eol

@@ -32,8 +32,8 @@ interpret e h (Loop bs r) = loop bs e h >>= \(e', h') -> interpret e' h' r
 
 step :: InterpretM e h m => e -> h -> Instruction -> m (e, h)
 step e h i = case i of
-  Put 0 -> writeOutput e h
-  Get 0 -> readInput e h
+  Output 0 -> writeOutput e h
+  Input 0 -> readInput e h
   Update 0 n -> (,h) <$> modifyCell e (+ fromIntegral n)
   Jump n -> (,h) <$> movePointer e (+ n)
   Set 0 n -> (,h) <$> writeCell e (fromIntegral n)

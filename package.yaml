@@ -25,6 +25,8 @@ dependencies:
 - deepseq
 - recursion-schemes
 - time
+- free
+- comonad
 
 ghc-options:
 - -Wall

@@ -57,8 +57,8 @@ type Source = Offset
 type Dest = Offset
 
 data Instruction
-  = Put Offset                -- output(m[p + offset])
-  | Get Offset                -- input(m, p + offset)
+  = Output Offset                -- output(m[p + offset])
+  | Input Offset                -- input(m, p + offset)
   | Update Offset Int         -- m[p + offset] += v
   | Jump Int                  -- p += v
   | Set Offset Int            -- m[p + offset] = v
