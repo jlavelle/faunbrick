@@ -13,6 +13,8 @@ import qualified Data.Text.Lazy.Builder as B
 import Data.Functor (($>))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.ByteString.Internal (c2w, w2c)
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as M
 
 data Error
   = OutOfBounds
@@ -21,25 +23,46 @@ data Error
 
 class Memory e m where
   type Cell e
-  readCell    :: e -> m (Cell e)
+  readCell    :: e -> Int -> m (Cell e)
   movePointer :: e -> (Int -> Int) -> m e
-  writeCell   :: e -> Cell e -> m e
+  writeCell   :: e -> Int -> Cell e -> m e
+  modifyCell  :: e -> Int -> (Cell e -> Cell e) -> m e
 
-data MVecMem = MVecMem (IOVector Word8) Int
+data MVecMem = MVecMem !(IOVector Word8) !Int
 
 instance MonadIO m => Memory MVecMem m where
   type Cell MVecMem = Word8
-  readCell (MVecMem v i) = liftIO $ MV.unsafeRead v i
+  readCell (MVecMem v i) o = liftIO $ MV.unsafeRead v (i + o)
   movePointer (MVecMem v i) f = pure $ MVecMem v $ f i
-  writeCell e@(MVecMem v i) a = liftIO $ MV.unsafeWrite v i a $> e
+  writeCell e@(MVecMem v i) o a = liftIO $ MV.unsafeWrite v (i + o) a $> e
+  modifyCell e@(MVecMem v i) o f = liftIO $ MV.modify v f (i + o) $> e
+
+data IntMapMem = IntMapMem !(IntMap Word8) !Int
+
+instance Applicative m => Memory IntMapMem m where
+  type Cell IntMapMem = Word8
+  readCell (IntMapMem m p) o = pure $ M.findWithDefault 0 (p + o) m
+  movePointer (IntMapMem m p) f = pure $ IntMapMem m $ f p
+  writeCell (IntMapMem m p) o a = pure $ IntMapMem (M.insert (p + o) a m) p
+  modifyCell (IntMapMem m p) o f = pure $ IntMapMem (M.alter go (p + o) m) p
+    where
+      go = maybe (Just $ f 0) (Just . f)
 
 data Tape a = Tape [a] a [a] deriving Show
 
+-- NB: the Tape doesn't perform as well as the IntMap with the offset optimization
 instance MonadError Error m => Memory (Tape Word8) m where
   type Cell (Tape Word8) = Word8
-  readCell = pure . readFocus
+  readCell t o = readFocus <$> liftEither (diffMove t (+ o))
   movePointer t = liftEither . diffMove t
-  writeCell t a = pure $ modifyFocus (const a) t
+  writeCell t o a = tapeMod t o (const a)
+  modifyCell t o f = tapeMod t o f
+
+tapeMod :: (Integral a, MonadError Error m) => Tape a -> Int -> (a -> a) -> m (Tape a)
+tapeMod t o f = do
+  t1 <- liftEither $ diffMove t (+ o)
+  let t2 = modifyFocus f t1
+  liftEither $ diffMove t2 (subtract o)
 
 readFocus :: Tape a -> a
 readFocus (Tape _ a _) = a

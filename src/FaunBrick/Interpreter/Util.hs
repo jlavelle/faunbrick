@@ -2,9 +2,13 @@ module FaunBrick.Interpreter.Util where
 
 import Data.Word (Word8)
 import qualified Data.Vector.Generic.Mutable as MV
+import qualified Data.IntMap.Strict as M
 import System.IO (stdout, stdin)
 
 import FaunBrick.Interpreter.Types
+
+defaultIntMapMem :: IntMapMem
+defaultIntMapMem = IntMapMem M.empty 0
 
 defaultMVecMem :: IO MVecMem
 defaultMVecMem = do

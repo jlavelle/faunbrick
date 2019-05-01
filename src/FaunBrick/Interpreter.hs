@@ -8,7 +8,7 @@ import FaunBrick.Interpreter.Types (
   Memory(..),
   Handle(..),
   TextHandle,
-  Tape,
+  IntMapMem,
   Error,
   IOHandle,
   MVecMem
@@ -25,52 +25,36 @@ interpret e h (Instr i r) = step e h i  >>= \(e', h') -> interpret e' h' r
 interpret e h (Loop bs r) = loop bs e h >>= \(e', h') -> interpret e' h' r
   where
     loop xs e' h' = do
-      c <- readCell e'
+      c <- readCell e' 0
       if c == 0
         then pure (e', h')
         else interpret e' h' xs >>= uncurry (loop xs)
 
 step :: InterpretM e h m => e -> h -> Instruction -> m (e, h)
 step e h i = case i of
-  Output 0 -> writeOutput e h
-  Input 0 -> readInput e h
-  Update 0 n -> (,h) <$> modifyCell e (+ fromIntegral n)
+  Output o -> writeOutput e h o
+  Input o -> readInput e h o
+  Update o n -> (,h) <$> modifyCell e o (+ fromIntegral n)
   Jump n -> (,h) <$> movePointer e (+ n)
-  Set 0 n -> (,h) <$> writeCell e (fromIntegral n)
-  MulUpdate 0 o n -> (,h) <$> mulUpdate e o n
-  MulSet 0 o n -> (,h) <$> mulSet e o n
-  _ -> error "Interpreter: interpreter does not support command offset optimization."
+  Set o n -> (,h) <$> writeCell e o (fromIntegral n)
+  MulUpdate s d n -> (,h) <$> mulUpdate e s d n
+  MulSet s d n -> (,h) <$> mulSet e s d n
 
-modifyCell :: (Memory e m, Monad m) => e -> (Cell e -> Cell e) -> m e
-modifyCell e f = readCell e >>= writeCell e . f
+mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
+mulUpdate e s d n = do
+  c <- readCell e s
+  modifyCell e d (+ (c * fromIntegral n))
 
-mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> m e
-mulUpdate e o n = do
-  c <- readCell e
-  e1 <- movePointer e (+ o)
-  e2 <- modifyCell e1 (\c' -> c' + c * fromIntegral n)
-  movePointer e2 (subtract o)
+mulSet :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
+mulSet e s d n = do
+  c <- readCell e s
+  writeCell e d (c * fromIntegral n)
 
-mulSet :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> m e
-mulSet e o n = do
-  c <- readCell e
-  e1 <- movePointer e (+ o)
-  e2 <- writeCell e1 (c * fromIntegral n)
-  movePointer e2 (subtract o)
+writeOutput :: InterpretM e h m => e -> h -> Int -> m (e, h)
+writeOutput e h o = fmap (e,) $ readCell e o >>= output h
 
--- TODO: Memory should support this directly
-offsetMod :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> (Cell e -> Cell e) -> m e
-offsetMod e o f = do
-  c <- readCell e
-  e1 <- movePointer e (+ o)
-  e2 <- modifyCell e1 (+ f c)
-  movePointer e2 (subtract o)
-
-writeOutput :: InterpretM e h m => e -> h -> m (e, h)
-writeOutput e h = fmap (e,) $ readCell e >>= output h
-
-readInput :: InterpretM e h m => e -> h -> m (e, h)
-readInput e h = input h >>= \(a, h') -> (,h') <$> writeCell e a
+readInput :: InterpretM e h m => e -> h -> Int -> m (e, h)
+readInput e h o = input h >>= \(a, h') -> (,h') <$> writeCell e o a
 
 newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
   deriving ( Functor
@@ -79,11 +63,11 @@ newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
            , MonadError Error
            )
 
-interpretPure :: Tape Word8 -> TextHandle -> Program -> Either Error (Tape Word8, TextHandle)
+interpretPure :: IntMapMem -> TextHandle -> Program -> Either Error (IntMapMem, TextHandle)
 interpretPure t h = runIdentity . runExceptT . runPure . interpret t h
 
-interpretPure' :: Program -> Either Error (Tape Word8, TextHandle)
-interpretPure' = interpretPure Util.defaultTape Util.defaultTextHandle
+interpretPure' :: Program -> Either Error (IntMapMem, TextHandle)
+interpretPure' = interpretPure Util.defaultIntMapMem Util.defaultTextHandle
 
 interpretIO :: MVecMem -> IOHandle -> Program -> IO (MVecMem, IOHandle)
 interpretIO = interpret

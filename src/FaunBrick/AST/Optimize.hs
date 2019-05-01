@@ -13,7 +13,7 @@ import FaunBrick.AST
 type Optimization = Program -> Program
 
 optimize :: Optimization
-optimize = eqFix $ loopsToMul . elimClears . fuse . contract
+optimize = eqFix $ offsets . elimClears . fuse . contract . loopsToMul
 
 -- contracts repeated Update/Jump/Sets at the same offset into single commands.
 -- `instrEq` checks that the Instructions have the same constructor and offset.

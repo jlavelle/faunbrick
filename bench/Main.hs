@@ -11,7 +11,7 @@ import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
 import FaunBrick.Interpreter (interpretPure', interpret)
 import FaunBrick.Interpreter.Types (TextHandle(..), UnsafeTextHandle(..))
-import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem)
+import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultTape)
 
 main :: IO ()
 main = defaultMain
@@ -26,6 +26,7 @@ main = defaultMain
       , bench "interpret lorem.b with optimizations" $ nf interpretPureOut loremO
       , bench "interpret bottles.b" $ nf interpretPureOut bottles
       , bench "interpret bottles.b with optimizations" $ nf interpretPureOut bottlesO
+      , bench "bottles.b with optimizations -- Tape" $ nf interpretPureTapeOut bottlesO
       ]
     , bgroup "IO"
       [ bench "interpret lorem.b"  $ nfAppIO interpretIO'' lorem
@@ -51,6 +52,11 @@ setupInterpEnv = do
 
 interpretPureOut :: Program -> Text
 interpretPureOut p = case interpretPure' p of
+  Left e -> error $ "Benchmark: Interpretation error " <> show e
+  Right (_, t) -> B.toLazyText $ textHandleOut t
+
+interpretPureTapeOut :: Program -> Text
+interpretPureTapeOut p = case interpret defaultTape defaultTextHandle p of
   Left e -> error $ "Benchmark: Interpretation error " <> show e
   Right (_, t) -> B.toLazyText $ textHandleOut t
 
