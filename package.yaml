@@ -27,6 +27,7 @@ dependencies:
 - time
 - free
 - comonad
+- text-show
 
 ghc-options:
 - -Wall
