@@ -2,7 +2,7 @@ module FaunBrick.AST.Optimize where
 
 import Prelude hiding (last)
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (maybe)
 import Data.Functor.Foldable (cata, embed, histo, Corecursive, Base)
 import Control.Comonad.Cofree (Cofree(..))
 import Control.Comonad (extract)
@@ -13,14 +13,31 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as Set
 
 import FaunBrick.AST.Util (
-  single, instrSum, updateOrJump, ifable, instrEq, addOffset, instrVal, last, cataBlocks
+  single,
+  instrSum,
+  updateOrJump,
+  ifable,
+  instrEq,
+  addOffset,
+  instrVal,
+  last,
+  cataBlocks,
+  srcOffset
   )
 import FaunBrick.AST
 
 type Optimization = Program -> Program
 
 optimize :: Optimization
-optimize = eqFix $ loopsToIfs . offsets . elimClears . fuse . contract . loopsToMul
+optimize = eqFix
+         $ dedupMulSet
+         . loopsToIfs
+         . uninterpose
+         . offsets
+         . elimClears
+         . fuse
+         . contract
+         . loopsToMul
 
 -- contracts repeated Update/Jump/Sets at the same offset into single commands.
 -- `instrEq` checks that the Instructions have the same constructor and offset.
@@ -34,8 +51,8 @@ contract = cataBlocks instrEq comb
         n -> single $ Update o n
       Jump _ -> single $ Jump $ instrSum a
       MulUpdate s d _ -> single $ MulUpdate s d $ instrSum a
-      MulSet s d n -> single $ MulSet s d $ fromMaybe n $ instrVal <$> last a
-      Set o n -> single $ Set o $ fromMaybe n $ instrVal <$> last a
+      MulSet s d n -> single $ MulSet s d $ maybe n instrVal (last a)
+      Set o n -> single $ Set o $ maybe n instrVal (last a)
       _ -> a
     comb _ = error "Optimizer: Unexpected input to comb."
 
@@ -55,35 +72,27 @@ fuse = histo go
     go HaltF = Halt
 
     -- updating instruction followed by a Set on the same offset does nothing; remove it.
-    go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (Set o' _) _)))
+    go x@(InstrF (fuseWithSet -> Just o) (r :< InstrF (Set o' _) _))
       | o == o' = r
       | otherwise = embedC x
 
     -- Input behaves the same way as Set
-    go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (Input o') _)))
+    go x@(InstrF (fuseWithSet -> Just o) (r :< InstrF (Input o') _))
       | o == o' = r
       | otherwise = embedC x
 
-    -- Eliminates the redundant 2nd instruction from this pattern:
-    -- m[p + x] = m[p + y] * 1
-    -- m[p + y] = m[p + x] * 1
-    go x@(InstrF i@(MulSet s d 1) (_ :< (InstrF (MulSet s' d' 1) r)))
-      | d == s' && s == d' = Instr i $ extract r
-      | otherwise = embedC x
-
-    -- MulSet behaves the same way as Set as long as the source is not
-    -- equal to the destination.
-    go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (MulSet s d _) _)))
+    -- MulSet behaves the same way as Set
+    go x@(InstrF (fuseWithSet -> Just o) (r :< InstrF (MulSet s d _) _))
       | o == d && s /= d = r
       | otherwise = embedC x
 
     -- If a Set is followed by an Update we can rewrite it as an increased Set
-    go x@(InstrF (Set o n) (_ :< (InstrF (Update o' n') r)))
+    go x@(InstrF (Set o n) (_ :< InstrF (Update o' n') r))
       | o == o' = Instr (Set o $ n + n') $ extract r
       | otherwise = embedC x
 
     -- Setting a cell to 0 and then MulUpdating it is a MulSet
-    go x@(InstrF (Set o 0) (_ :< (InstrF (MulUpdate s d n) r)))
+    go x@(InstrF (Set o 0) (_ :< InstrF (MulUpdate s d n) r))
       | o == d = Instr (MulSet s d n) $ extract r
       | otherwise = embedC x
 
@@ -96,6 +105,47 @@ fuse = histo go
       MulSet _ d _ -> Just d
       MulUpdate _ d _ -> Just d
       _ -> Nothing
+
+-- Eliminates the redundant 2nd instruction from this pattern:
+-- m[p + x] = m[p + y] * 1
+-- m[p + y] = m[p + x] * 1
+dedupMulSet :: Optimization
+dedupMulSet = histo go
+  where
+    go HaltF = Halt
+    go x@(InstrF i@(MulSet s d 1) (_ :< InstrF (MulSet s' d' 1) r))
+      | d == s' && s == d' = Instr i $ extract r
+      | otherwise = embedC x
+    go x = embedC x
+
+-- After optimization, programs like hanoi.b end up with many subsequences in the form:
+-- Set x 0
+-- <unrelated instruction>
+-- MulSet/MulUpdate/Update s x n
+-- This optimization removes the Set x 0 and converts MulUpdates into MulSets if possible.
+uninterpose :: Optimization
+uninterpose = histo go
+  where
+    go :: FaunBrickF Instruction (Cofree (FaunBrickF Instruction) Program) -> Program
+    go HaltF = Halt
+
+    go x@(InstrF (Set o 0) (ra :< InstrF i@(srcOffset -> Just s) rb)) = case rb of
+
+      _ :< InstrF (MulSet _ d' _) _
+        | s /= o && d' == o -> ra
+        | otherwise -> embedC x
+
+      _ :< InstrF (MulUpdate s' d' n) r
+        | s /= o && d' == o -> Instr i (Instr (MulSet s' d' n) (extract r))
+        | otherwise -> embedC x
+
+      -- Unclear whether or not this will ever happen
+      _ :< InstrF (Update o' n) r
+        | s /= o && o' == o -> Instr i (Instr (Set o' n) (extract r))
+        | otherwise -> embedC x
+      _ -> embedC x
+
+    go x = embedC x
 
 -- Rewrites suitable leaf loops as MulUpdate instructions
 loopsToMul :: Optimization
@@ -134,7 +184,7 @@ loopsToMul = cata go
       where
         -- Each entry in the deltas map corresponds to a MulUpdate at the
         -- entry's key
-        buildMul off val rest = Instr (MulUpdate 0 off val) rest
+        buildMul off val = Instr (MulUpdate 0 off val)
 
 -- Delays pointer movement to the end of a block by computing the offset
 -- that each instruction operates on.
@@ -182,7 +232,7 @@ loopsToIfs = cata go
       _ -> error "Optimizer: Unexpected input to loopsToIfs.computeClears"
 
     analyze :: (IntSet, Program, Int) -> Maybe Program
-    analyze (clears, prog, (-1)) = cata check prog
+    analyze (clears, prog, -1) = cata check prog
       where
         check HaltF = Just Halt
         check (InstrF i@(cleared -> True) r) = Instr i <$> r
