@@ -31,13 +31,13 @@ type Optimization = Program -> Program
 optimize :: Optimization
 optimize = eqFix
          $ dedupMulSet
-         . loopsToIfs
          . uninterpose
-         . offsets
          . elimClears
+         . offsets
          . fuse
          . contract
          . loopsToMul
+         . loopsToIfs
 
 -- contracts repeated Update/Jump/Sets at the same offset into single commands.
 -- `instrEq` checks that the Instructions have the same constructor and offset.

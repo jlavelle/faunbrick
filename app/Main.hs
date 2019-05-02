@@ -8,6 +8,7 @@ import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Monoid (Endo(..))
 import Data.Foldable (fold, traverse_)
 import Data.List (inits)
+import Control.DeepSeq (force)
 
 import FaunBrick.Interpreter (interpretIO', interpretPure')
 import FaunBrick.Parser (parseFile)
@@ -28,13 +29,13 @@ subOpts :: (forall a. [a] -> [[a]]) -> [(Int, Optimization)]
 subOpts f = zip [0..] opts
   where
     opts = fmap (eqFix . appEndo . fold) $ f $ fmap Endo
-      [ loopsToMul
+      [ loopsToIfs
+      , loopsToMul
       , contract
       , fuse
-      , elimClears
       , offsets
+      , elimClears
       , uninterpose
-      , loopsToIfs
       , dedupMulSet
       ]
 
@@ -43,10 +44,13 @@ progOpts f p = fmap (fmap ($ p)) $ subOpts f
 
 main :: IO ()
 main = do
-  p <- parseFile "programs/mandel.b"
-  traverse_ go $ progOpts inits p
+  p <- parseFile "programs/hanoi.b"
+  let ps = force $ progOpts inits p
+  r <- traverse go (tail $ tail $ tail $ ps)
+  traverse_ putStrLn r
+  runFile "programs/mandel.b"
   where
-    go (i, p) = timed p $ "Mandelbrot with opt " <> show i
+    go (i, p) = timed' p ("Hanoi with opt " <> show i)
 
 
 timed :: Program -> String -> IO ()
@@ -57,3 +61,10 @@ timed p s = do
   interpretIO' p
   t' <- getCurrentTime
   putStrLn $ "Runtime: " <> show (diffUTCTime t' t)
+
+timed' :: Program -> String -> IO String
+timed' p s = do
+  t <- getCurrentTime
+  interpretIO' p
+  t' <- getCurrentTime
+  pure (s <> ": " <> show (diffUTCTime t' t))
