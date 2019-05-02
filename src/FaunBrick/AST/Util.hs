@@ -3,6 +3,7 @@ module FaunBrick.AST.Util where
 import Data.Data (toConstr)
 import Data.Monoid (Sum(..))
 import Data.Functor.Foldable (cata)
+import Control.Applicative ((<|>))
 
 import FaunBrick.AST
 
@@ -23,17 +24,36 @@ groupBy p' (Instr x' xs') = Instr (Instr x' ys') zs'
 group :: Eq a => FaunBrick a -> FaunBrick (FaunBrick a)
 group = groupBy (==)
 
+-- Apply a transformation to each block of instructions
+cataBlocks :: (a -> a -> Bool) -> (FaunBrick a -> FaunBrick a) -> FaunBrick a -> FaunBrick a
+cataBlocks p f = cata go . groupBy p
+  where
+    go HaltF = Halt
+    go (LoopF as bs) = Loop as bs
+    go (InstrF p r) = f p <> r
+
+last :: FaunBrick a -> Maybe a
+last = cata go
+  where
+    go HaltF = Nothing
+    go (InstrF a Nothing) = Just a
+    go (InstrF _ a) = a
+    go (LoopF a b) = b <|> a
+
 single :: a -> FaunBrick a
 single a = Instr a Halt
 
 instrSum :: Program -> Int
-instrSum = getSum . foldMap (Sum . go)
-  where
-    go = \case
-      Update _ n -> n
-      Jump n -> n
-      Set _ n -> n
-      _ -> 0
+instrSum = getSum . foldMap (Sum . instrVal)
+
+instrVal :: Instruction -> Int
+instrVal = \case
+  Update _ n -> n
+  Jump n -> n
+  Set _ n -> n
+  MulUpdate _ _ n -> n
+  MulSet _ _ n -> n
+  _ -> 0
 
 addOffset :: Int -> Instruction -> Instruction
 addOffset x = \case

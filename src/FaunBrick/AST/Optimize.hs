@@ -1,5 +1,8 @@
 module FaunBrick.AST.Optimize where
 
+import Prelude hiding (last)
+
+import Data.Maybe (fromMaybe)
 import Data.Functor.Foldable (cata, embed, histo, Corecursive, Base)
 import Control.Comonad.Cofree (Cofree(..))
 import Control.Comonad (extract)
@@ -7,7 +10,9 @@ import Control.Monad ((>=>))
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
 
-import FaunBrick.AST.Util (groupBy, single, instrSum, arithmetic, instrEq, addOffset)
+import FaunBrick.AST.Util (
+  single, instrSum, arithmetic, instrEq, addOffset, instrVal, last, cataBlocks
+  )
 import FaunBrick.AST
 
 type Optimization = Program -> Program
@@ -18,20 +23,17 @@ optimize = eqFix $ offsets . elimClears . fuse . contract . loopsToMul
 -- contracts repeated Update/Jump/Sets at the same offset into single commands.
 -- `instrEq` checks that the Instructions have the same constructor and offset.
 contract :: Optimization
-contract = cata go . groupBy instrEq
+contract = cataBlocks instrEq comb
   where
-    go :: FaunBrickF Program Program -> Program
-    go HaltF = Halt
-    go (LoopF as bs) = Loop as bs
-    go (InstrF g r) = comb g <> r
-
     comb :: Program -> Program
     comb a@(Instr x _) = case x of
       Update o _ -> case instrSum a of
         0 -> Halt
         n -> single $ Update o n
       Jump _ -> single $ Jump $ instrSum a
-      Set o _ -> single $ Set o $ instrSum a
+      MulUpdate s d _ -> single $ MulUpdate s d $ instrSum a
+      MulSet s d n -> single $ MulSet s d $ fromMaybe n $ instrVal <$> last a
+      Set o n -> single $ Set o $ fromMaybe n $ instrVal <$> last a
       _ -> a
     comb _ = error "Optimizer: Unexpected input to comb."
 
@@ -58,6 +60,11 @@ fuse = histo go
     -- Input behaves the same way as Set
     go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (Input o') _)))
       | o == o' = r
+      | otherwise = embedC x
+
+    -- MulSet behaves the same way as Set
+    go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (MulSet s d _) _)))
+      | o == d && s /= d = r
       | otherwise = embedC x
 
     -- If a Set is followed by an Update we can rewrite it as an increased Set
@@ -113,24 +120,21 @@ loopsToMul = cata go
       -- We can only optimize the loop if it writes the cell at offset 0 to -1
       -- and has a net offset of 0
       | offset /= 0 || M.findWithDefault 0 offset deltas /= (-1) = Nothing
-      | otherwise = Just $ M.foldMapWithKey buildMul (M.delete 0 deltas)
+      | otherwise = Just $ M.foldrWithKey buildMul Halt (M.delete 0 deltas)
       where
         -- Each entry in the deltas map corresponds to a MulUpdate at the
         -- entry's key
-        buildMul off val = single $ MulUpdate 0 off val
+        buildMul off val rest = Instr (MulUpdate 0 off val) rest
 
 -- Delays pointer movement to the end of a block by computing the offset
 -- that each instruction operates on.
 offsets :: Optimization
-offsets = cata go . groupBy (\_ _ -> True)
+offsets = cataBlocks (\_ _ -> True) go
   where
-    go :: FaunBrickF Program Program -> Program
-    go HaltF = Halt
-    go (LoopF as bs) = Loop as bs
-    go (InstrF program r) =
+    go program =
       let (program', offset) = foldl computeOffset (mempty, 0) program
           jump = if offset == 0 then Halt else single (Jump offset)
-      in program' <> jump <> r
+      in program' <> jump
 
     computeOffset :: (Program, Int) -> Instruction -> (Program, Int)
     computeOffset (program, offset) = \case

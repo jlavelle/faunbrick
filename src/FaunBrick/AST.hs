@@ -31,10 +31,10 @@ instance Monoid (FaunBrick a) where
   mempty = Halt
 
 data SumR f a = L a | R (f a)
-  deriving (Functor, Foldable, Traversable, Eq, Show)
+  deriving (Functor, Foldable, Traversable, Eq, Ord, Show)
 
 newtype ProgView a = ProgView { runProgView :: [SumR ProgView a] }
-  deriving (Functor, Foldable, Traversable, Eq, Show)
+  deriving (Functor, Foldable, Traversable, Eq, Ord, Show)
 
 instance IsList (FaunBrick a) where
   type Item (FaunBrick a) = SumR ProgView a
