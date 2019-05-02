@@ -22,19 +22,24 @@ interpret :: InterpretM e h m => e -> h -> Program -> m (e, h)
 interpret e h Halt = pure (e, h)
 interpret e h (Instr i r) = step e h i >>= \(e', h') -> interpret e' h' r
 interpret e h (If bs r) = branch bs e h >>= \(e', h') -> interpret e' h' r
-  where
-    branch xs e' h' = do
-      c <- readCell e' 0
-      if c == 0
-        then pure (e', h')
-        else interpret e' h' xs
 interpret e h (Loop bs r) = loop bs e h >>= \(e', h') -> interpret e' h' r
-  where
-    loop xs e' h' = do
-      c <- readCell e' 0
-      if c == 0
-        then pure (e', h')
-        else interpret e' h' xs >>= uncurry (loop xs)
+{-# INLINE interpret #-}
+
+branch :: InterpretM e h m => Program -> e -> h -> m (e, h)
+branch xs e h = do
+  c <- readCell e 0
+  if c == 0
+    then pure (e, h)
+    else interpret e h xs
+{-# INLINE branch #-}
+
+loop :: InterpretM e h m => Program -> e -> h -> m (e, h)
+loop xs e h = do
+  c <- readCell e 0
+  if c == 0
+    then pure (e, h)
+    else interpret e h xs >>= \(e', h') -> loop xs e' h'
+{-# INLINE loop #-}
 
 step :: InterpretM e h m => e -> h -> Instruction -> m (e, h)
 step e h i = case i of
@@ -45,22 +50,27 @@ step e h i = case i of
   Set o n -> (,h) <$> writeCell e o (fromIntegral n)
   MulUpdate s d n -> (,h) <$> mulUpdate e s d n
   MulSet s d n -> (,h) <$> mulSet e s d n
+{-# INLINE step #-}
 
 mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
 mulUpdate e s d n = do
   c <- readCell e s
   modifyCell e d (+ (c * fromIntegral n))
+{-# INLINE mulUpdate #-}
 
 mulSet :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
 mulSet e s d n = do
   c <- readCell e s
   writeCell e d (c * fromIntegral n)
+{-# INLINE mulSet #-}
 
 writeOutput :: InterpretM e h m => e -> h -> Int -> m (e, h)
 writeOutput e h o = fmap (e,) $ readCell e o >>= output h
+{-# INLINE writeOutput #-}
 
 readInput :: InterpretM e h m => e -> h -> Int -> m (e, h)
 readInput e h o = input h >>= \(a, h') -> (,h') <$> writeCell e o a
+{-# INLINE readInput #-}
 
 newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
   deriving ( Functor

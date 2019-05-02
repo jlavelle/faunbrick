@@ -35,6 +35,9 @@ main = defaultMain
       , bench "interpret bottles.b with optimizations" $ nfAppIO interpretIO'' bottlesO
       ]
     ]
+    , env setupOptimizerEnv $ \mandel -> bgroup "Optimization"
+      [ bench "Optimize mandel.b" $ nf optimize mandel
+      ]
   ]
 
 setupParseEnv :: IO (Text, Text, Text)
@@ -49,6 +52,9 @@ setupInterpEnv = do
   l <- parseFile "programs/lorem.b"
   b <- parseFile "programs/bottles.b"
   pure (l, optimize l, b, optimize b)
+
+setupOptimizerEnv :: IO Program
+setupOptimizerEnv = parseFile "programs/mandel.b"
 
 interpretPureOut :: Program -> Text
 interpretPureOut p = case interpretPure' p of
