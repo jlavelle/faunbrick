@@ -11,7 +11,7 @@ import Data.Word (Word8)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as B
 import Data.Functor (($>))
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, maybe)
 import Data.ByteString.Internal (c2w, w2c)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
@@ -53,7 +53,7 @@ instance Applicative m => Memory IntMapMem m where
   {-# INLINE writeCell #-}
   modifyCell (IntMapMem m p) o f = pure $ IntMapMem (M.alter go (p + o) m) p
     where
-      go = maybe (Just $ f 0) (Just . f)
+      go = Just . maybe (f 0) f
   {-# INLINE modifyCell #-}
 
 data Tape a = Tape [a] a [a] deriving Show
@@ -67,7 +67,7 @@ instance MonadError Error m => Memory (Tape Word8) m where
   {-# INLINE movePointer #-}
   writeCell t o a = tapeMod t o (const a)
   {-# INLINE writeCell #-}
-  modifyCell t o f = tapeMod t o f
+  modifyCell = tapeMod
   {-# INLINE modifyCell #-}
 
 tapeMod :: (Integral a, MonadError Error m) => Tape a -> Int -> (a -> a) -> m (Tape a)
@@ -132,7 +132,7 @@ instance MonadError Error m => Handle TextHandle m where
   type Out TextHandle = Word8
   output t = pure . thOut t
   {-# INLINE output #-}
-  input = fromMaybe (throwError NoInput) . fmap pure . thIn
+  input = maybe (throwError NoInput) pure . thIn
   {-# INLINE input #-}
 
 newtype UnsafeTextHandle = UnsafeTextHandle TextHandle

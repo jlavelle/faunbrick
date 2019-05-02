@@ -7,6 +7,7 @@ import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.IO as LT
 import qualified Data.Text.Lazy.Builder as B
 import Data.Foldable (fold)
+import Data.Maybe (fromMaybe)
 
 import FaunBrick.AST.Optimize (Optimization)
 import FaunBrick.AST (Program, Instruction(..), FaunBrick(..))
@@ -84,7 +85,7 @@ encode Language{..} Options{..} i =
         Set o n -> set o n
         MulUpdate s d n -> mulUpdate s d n
         MulSet s d n -> mulSet s d n
-  in B.fromText $ instr <> maybe mempty id lineEnd
+  in B.fromText $ instr <> fromMaybe mempty lineEnd
 
 indented :: Int -> Int -> Builder -> Builder
 indented level n b = fold (replicate (n * level) " ") <> b

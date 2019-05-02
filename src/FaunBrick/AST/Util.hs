@@ -4,6 +4,7 @@ import Data.Data (toConstr)
 import Data.Monoid (Sum(..))
 import Data.Functor.Foldable (cata)
 import Control.Applicative ((<|>))
+import Control.Monad ((>=>))
 
 import FaunBrick.AST
 
@@ -82,6 +83,9 @@ offsets = \case
   MulUpdate s d _ -> Just $ Right (s, d)
   MulSet s d _ -> Just $ Right (s, d)
   Jump _ -> Nothing
+
+srcOffset :: Instruction -> Maybe Int
+srcOffset = offsets >=> either (const Nothing) (Just . fst)
 
 updateOrJump :: Program -> Maybe Program
 updateOrJump = cata go
