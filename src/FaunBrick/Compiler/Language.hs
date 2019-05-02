@@ -43,6 +43,8 @@ data Encoder = Encoder
   , lineEnd   :: Maybe Text
   , loopBegin :: Text
   , loopEnd   :: Text
+  , ifBegin   :: Text
+  , ifEnd     :: Text
   , indent    :: Int
   }
 
@@ -61,11 +63,14 @@ compile l@Language{..} o@Options{..} p =
     go :: Program -> Int -> Builder
     go Halt _ = mempty
     go (Instr i r) n = indented (indent encoder) n $ encode l o i <> go r n
-    go (Loop as r) n =
+    go (Loop as r) n = block as r (loopBegin encoder) (loopEnd encoder) n
+    go (If as r) n   = block as r (ifBegin encoder) (ifEnd encoder) n
+
+    block as r begin end n =
       let Encoder{..} = encoder
-      in indented indent n (B.fromText loopBegin)
+      in indented indent n (B.fromText begin)
          <> go as (n + 1)
-         <> indented indent n (B.fromText loopEnd)
+         <> indented indent n (B.fromText end)
          <> go r n
 
 encode :: Language -> Options -> Instruction -> Builder

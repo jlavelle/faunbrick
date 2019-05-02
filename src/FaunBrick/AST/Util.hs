@@ -10,6 +10,7 @@ import FaunBrick.AST
 groupBy :: (a -> a -> Bool) -> FaunBrick a -> FaunBrick (FaunBrick a)
 groupBy _ Halt = Halt
 groupBy p' (Loop as bs) = Loop (groupBy p' as) (groupBy p' bs)
+groupBy p' (If as bs) = If (groupBy p' as) (groupBy p' bs)
 groupBy p' (Instr x' xs') = Instr (Instr x' ys') zs'
   where
     (ys', zs') = go p' x' xs'
@@ -20,16 +21,18 @@ groupBy p' (Instr x' xs') = Instr (Instr x' ys') zs'
         (ys, zs) = go p x xs
     go _ _ Halt = (Halt, Halt)
     go _ _ (Loop as bs) = (Halt, Loop (groupBy p' as) (groupBy p' bs))
+    go _ _ (If as bs) = (Halt, If (groupBy p' as) (groupBy p' bs))
 
 group :: Eq a => FaunBrick a -> FaunBrick (FaunBrick a)
 group = groupBy (==)
 
 -- Apply a transformation to each block of instructions
 cataBlocks :: (a -> a -> Bool) -> (FaunBrick a -> FaunBrick a) -> FaunBrick a -> FaunBrick a
-cataBlocks p f = cata go . groupBy p
+cataBlocks pr f = cata go . groupBy pr
   where
     go HaltF = Halt
     go (LoopF as bs) = Loop as bs
+    go (IfF as bs) = If as bs
     go (InstrF p r) = f p <> r
 
 last :: FaunBrick a -> Maybe a
@@ -39,6 +42,7 @@ last = cata go
     go (InstrF a Nothing) = Just a
     go (InstrF _ a) = a
     go (LoopF a b) = b <|> a
+    go (IfF a b) = b <|> a
 
 single :: a -> FaunBrick a
 single a = Instr a Halt
@@ -79,12 +83,26 @@ offsets = \case
   MulSet s d _ -> Just $ Right (s, d)
   Jump _ -> Nothing
 
--- Test if a program only contains arithmetic operations (Update/Jump)
-arithmetic :: Program -> Maybe Program
-arithmetic = cata go
+updateOrJump :: Program -> Maybe Program
+updateOrJump = cata go
   where
     go :: FaunBrickF Instruction (Maybe Program) -> Maybe Program
     go HaltF = Just Halt
     go (InstrF i@(Update _ _) r) = Instr i <$> r
     go (InstrF i@(Jump _) r) = Instr i <$> r
     go _ = Nothing
+
+-- Checks if a program is suitable for the loopToIf optimization
+ifable :: Program -> Maybe Program
+ifable = cata go
+  where
+    go :: FaunBrickF Instruction (Maybe Program) -> Maybe Program
+    go HaltF = Just Halt
+    go (InstrF i@(ifelem -> True) r) = Instr i <$> r
+    go _ = Nothing
+    ifelem = \case
+      Update _ _ -> True
+      Set n _ -> n /= 0
+      MulSet _ n _ -> n /= 0
+      MulUpdate _ n _ -> n /= 0
+      _ -> False

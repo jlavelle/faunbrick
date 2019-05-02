@@ -1,6 +1,5 @@
 module FaunBrick.Interpreter where
 
-import Data.Word (Word8)
 import Control.Monad.Except (MonadError, runExceptT, ExceptT)
 import Data.Functor.Identity (Identity, runIdentity)
 
@@ -21,7 +20,14 @@ type InterpretM e h m =
 
 interpret :: InterpretM e h m => e -> h -> Program -> m (e, h)
 interpret e h Halt = pure (e, h)
-interpret e h (Instr i r) = step e h i  >>= \(e', h') -> interpret e' h' r
+interpret e h (Instr i r) = step e h i >>= \(e', h') -> interpret e' h' r
+interpret e h (If bs r) = branch bs e h >>= \(e', h') -> interpret e' h' r
+  where
+    branch xs e' h' = do
+      c <- readCell e' 0
+      if c == 0
+        then pure (e', h')
+        else interpret e' h' xs
 interpret e h (Loop bs r) = loop bs e h >>= \(e', h') -> interpret e' h' r
   where
     loop xs e' h' = do

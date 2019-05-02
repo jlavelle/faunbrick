@@ -43,7 +43,8 @@ cEncoder = imperativeEncoder ie
   where
     ie = let iMemAccess = memAccess
              iLoopBegin = "while(*p != 0) {\n"
-             iLoopEnd   = "}\n"
+             iIfBegin   = "if(*p != 0) {\n"
+             iBlockEnd  = "}\n"
              iLineEnd   = ceol
              iIndent    = 4
          in ImperativeEncoder{..}

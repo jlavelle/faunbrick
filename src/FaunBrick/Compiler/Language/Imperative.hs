@@ -10,7 +10,8 @@ import FaunBrick.Compiler.Language
 data ImperativeEncoder = ImperativeEncoder
   { iMemAccess :: Int -> Text
   , iLoopBegin :: Text
-  , iLoopEnd   :: Text
+  , iIfBegin   :: Text
+  , iBlockEnd  :: Text
   , iLineEnd   :: Text
   , iIndent    :: Int
   }
@@ -26,7 +27,9 @@ imperativeEncoder ImperativeEncoder{..} =
       jump n = "p" <> plusEq n
       lineEnd = Just iLineEnd
       loopBegin = iLoopBegin
-      loopEnd = iLoopEnd
+      loopEnd = iBlockEnd
+      ifBegin = iIfBegin
+      ifEnd = iBlockEnd
       indent = iIndent
   in Encoder{..}
 

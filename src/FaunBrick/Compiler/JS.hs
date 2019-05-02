@@ -44,7 +44,8 @@ jsEncoder = imperativeEncoder ie
   where
     ie = let iMemAccess = memAccess
              iLoopBegin = "while(m[p] !== 0) {\n"
-             iLoopEnd   = "}\n"
+             iIfBegin   = "if(m[p] !== 0) {\n"
+             iBlockEnd  = "}\n"
              iLineEnd   = ceol
              iIndent    = 2
          in ImperativeEncoder{..}

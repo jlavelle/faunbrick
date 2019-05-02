@@ -8,17 +8,19 @@ import Control.Comonad.Cofree (Cofree(..))
 import Control.Comonad (extract)
 import Control.Monad ((>=>))
 import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as M
+import qualified Data.IntMap.Strict as Map
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as Set
 
 import FaunBrick.AST.Util (
-  single, instrSum, arithmetic, instrEq, addOffset, instrVal, last, cataBlocks
+  single, instrSum, updateOrJump, ifable, instrEq, addOffset, instrVal, last, cataBlocks
   )
 import FaunBrick.AST
 
 type Optimization = Program -> Program
 
 optimize :: Optimization
-optimize = eqFix $ offsets . elimClears . fuse . contract . loopsToMul
+optimize = eqFix $ loopsToIfs . offsets . elimClears . fuse . contract . loopsToMul
 
 -- contracts repeated Update/Jump/Sets at the same offset into single commands.
 -- `instrEq` checks that the Instructions have the same constructor and offset.
@@ -92,12 +94,12 @@ loopsToMul :: Optimization
 loopsToMul = cata go
   where
     go :: FaunBrickF Instruction Program -> Program
-    go (LoopF (arithmetic >=> simulate -> Just mul) r) = mul <> single (Set 0 0) <> r
+    go (LoopF (updateOrJump >=> simulate -> Just mul) r) = mul <> single (Set 0 0) <> r
     go x = embed x
 
     -- Run a program in an empty environment and see if it can be rewritten
     simulate :: Program -> Maybe Program
-    simulate = analyze . foldl computeDelta (M.empty, 0)
+    simulate = analyze . foldl computeDelta (Map.empty, 0)
 
     -- Computes the effect an instruction has on the environment
     computeDelta :: (IntMap Int, Int) -> Instruction -> (IntMap Int, Int)
@@ -105,13 +107,13 @@ loopsToMul = cata go
 
       -- Updates change the value at the current offset + their offset
       Update o n ->
-        let deltas' = M.insertWith (+) (offset + o) n deltas
+        let deltas' = Map.insertWith (+) (offset + o) n deltas
         in (deltas', offset)
 
       -- Jumps move the offset
       Jump n -> (deltas, offset + n)
 
-      -- This shouldn't happen if `arithmetic` is implemented properly.
+      -- This shouldn't happen if `updateOrJump` is implemented properly.
       _ -> error "Optimizer: Unexpected input to loopsToMul.computeDelta"
 
     -- Try to build a program based on the contents of the environment
@@ -119,8 +121,8 @@ loopsToMul = cata go
     analyze (deltas, offset)
       -- We can only optimize the loop if it writes the cell at offset 0 to -1
       -- and has a net offset of 0
-      | offset /= 0 || M.findWithDefault 0 offset deltas /= (-1) = Nothing
-      | otherwise = Just $ M.foldrWithKey buildMul Halt (M.delete 0 deltas)
+      | offset /= 0 || Map.findWithDefault 0 offset deltas /= (-1) = Nothing
+      | otherwise = Just $ Map.foldrWithKey buildMul Halt (Map.delete 0 deltas)
       where
         -- Each entry in the deltas map corresponds to a MulUpdate at the
         -- entry's key
@@ -142,6 +144,48 @@ offsets = cataBlocks (\_ _ -> True) go
       x ->
         let program' = program <> single (addOffset offset x)
         in (program', offset)
+
+loopsToIfs :: Optimization
+loopsToIfs = cata go
+  where
+    go :: FaunBrickF Instruction Program -> Program
+    go (LoopF (ifable >=> simulate -> Just p) r) = If (p <> single (Set 0 0)) r
+    go x = embed x
+
+    simulate :: Program -> Maybe Program
+    simulate = analyze . foldl computeClears (Set.singleton 0, Halt, 0)
+
+    computeClears :: (IntSet, Program, Int) -> Instruction -> (IntSet, Program, Int)
+    computeClears (clears, prog, origin) = \case
+      Update o n | o == 0    -> (clears, prog, origin + n)
+                 | otherwise ->
+                   let prog' = prog <> single (MulUpdate 0 o n)
+                       clears' = Set.delete o clears
+                   in (clears', prog', origin)
+
+      i@(MulUpdate _ d _) -> (Set.delete d clears, prog <> single i, origin)
+      i@(MulSet _ d _)    -> (Set.delete d clears, prog <> single i, origin)
+
+      i@(Set o n) -> let clears' | n == 0    = Set.insert o clears
+                                 | otherwise = Set.delete o clears
+                         prog' = prog <> single i
+                     in (clears', prog', origin)
+
+      _ -> error "Optimizer: Unexpected input to loopsToIfs.computeClears"
+
+    analyze :: (IntSet, Program, Int) -> Maybe Program
+    analyze (clears, prog, (-1)) = cata check prog
+      where
+        check HaltF = Just Halt
+        check (InstrF i@(cleared -> True) r) = Instr i <$> r
+        check _ = Nothing
+
+        cleared = \case
+          MulSet s _ _    -> Set.member s clears
+          MulUpdate s _ _ -> Set.member s clears
+          _ -> True
+
+    analyze _ = Nothing
 
 embedC :: Corecursive t => Base t (Cofree (Base t) t) -> t
 embedC = embed . fmap extract
