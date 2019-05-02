@@ -47,7 +47,7 @@ elimClears = cata go
     go (LoopF (Instr (Update o _) Halt) r) = Instr (Set o 0) r
     go x = embed x
 
--- Fuses together certain commands that operate on the same offset
+-- Fuses together certain commands that operate on the same offset or are redundant
 fuse :: Optimization
 fuse = histo go
   where
@@ -64,7 +64,15 @@ fuse = histo go
       | o == o' = r
       | otherwise = embedC x
 
-    -- MulSet behaves the same way as Set
+    -- Eliminates the redundant 2nd instruction from this pattern:
+    -- m[p + x] = m[p + y] * 1
+    -- m[p + y] = m[p + x] * 1
+    go x@(InstrF i@(MulSet s d 1) (_ :< (InstrF (MulSet s' d' 1) r)))
+      | d == s' && s == d' = Instr i $ extract r
+      | otherwise = embedC x
+
+    -- MulSet behaves the same way as Set as long as the source is not
+    -- equal to the destination.
     go x@(InstrF (fuseWithSet -> Just o) (r :< (InstrF (MulSet s d _) _)))
       | o == d && s /= d = r
       | otherwise = embedC x
