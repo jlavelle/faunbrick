@@ -1,11 +1,16 @@
 module FaunBrick.Interpreter where
 
+import Control.Monad (void)
 import Control.Monad.Except (MonadError, runExceptT, ExceptT)
 import Data.Functor.Identity (Identity, runIdentity)
+import Data.Primitive.Types (Prim)
+import Data.Word (Word8, Word16, Word32, Word64)
+import Data.Proxy (Proxy(..))
 
 import FaunBrick.Interpreter.Types (
   Memory(..),
   Handle(..),
+  Packable,
   TextHandle,
   IntMapMem,
   Error,
@@ -14,7 +19,7 @@ import FaunBrick.Interpreter.Types (
   )
 import qualified FaunBrick.Interpreter.Util as Util
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
-import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
 
 type InterpretM e h m =
   (Monad m, Memory e m, Handle h m, Integral (Out h), Integral (Cell e), Cell e ~ Out h)
@@ -87,14 +92,28 @@ newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
            , MonadError Error
            )
 
-interpretPure :: IntMapMem -> TextHandle -> Program -> Either Error (IntMapMem, TextHandle)
+interpretPure :: (Integral a, Packable a)
+              => IntMapMem a
+              -> TextHandle a
+              -> Program
+              -> Either Error (IntMapMem a, TextHandle a)
 interpretPure t h = runIdentity . runExceptT . runPure . interpret NoChange t h
 
-interpretPure' :: Program -> Either Error (IntMapMem, TextHandle)
+interpretPure' :: (Integral a, Packable a)
+               => Program
+               -> Either Error (IntMapMem a, TextHandle a)
 interpretPure' = interpretPure Util.defaultIntMapMem Util.defaultTextHandle
 
-interpretIO :: EofMode -> MVecMem -> IOHandle -> Program -> IO (MVecMem, IOHandle)
-interpretIO = interpret
+interpretIO :: (Integral a, Packable a, Prim a)
+             => EofMode
+             -> Program
+             -> Proxy a
+             -> IO (MVecMem a, IOHandle a)
+interpretIO em p _ = Util.defaultMVecMem >>= \m -> interpret em m Util.defaultIOHandle p
 
-interpretIO' :: EofMode -> Program -> IO (MVecMem, IOHandle)
-interpretIO' em p = Util.defaultMVecMem >>= \m -> interpretIO em m Util.defaultIOHandle p
+runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
+runInterpretIO m b p = case b of
+  Width8  -> void $ interpretIO m p (Proxy @Word8)
+  Width16 -> void $ interpretIO m p (Proxy @Word16)
+  Width32 -> void $ interpretIO m p (Proxy @Word32)
+  Width64 -> void $ interpretIO m p (Proxy @Word64)

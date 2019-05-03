@@ -4,13 +4,12 @@ module Main where
 
 import qualified Options.Applicative as Opts
 import Options.Applicative (Parser, ParserInfo)
-import Control.Monad (void)
 import Control.Applicative (optional, (<|>))
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
 
-import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
 import qualified FaunBrick.Interpreter as Interpreter
 import qualified FaunBrick.AST.Optimize as AST
 import qualified FaunBrick.Parser as Parser
@@ -18,12 +17,12 @@ import qualified FaunBrick.Compiler.JS
 import qualified FaunBrick.Compiler.C
 
 data Options = Options
-  { mode    :: Mode
-  , eofMode :: EofMode
+  { mode     :: Mode
+  , eofMode  :: EofMode
   }
 
 data Mode
-  = Interpret Source
+  = Interpret Source BitWidth
   | Compile CompileOpts
 
 type Source = Either Text FilePath
@@ -47,7 +46,7 @@ parseMode =
       subcommand
         "interpret"
         "Interpret Brainfuck source"
-        (Interpret <$> parseSource)
+        (Interpret <$> parseSource <*> parseBitWidth)
   <|> subcommand
         "compile"
         "Compile to Brainfuck to another language"
@@ -86,9 +85,17 @@ parseSource = fmap Right filePath <|> fmap (Left . LT.pack) snippet
       <> Opts.help "Use a snippet of code as the source"
       )
 
+parseBitWidth :: Parser BitWidth
+parseBitWidth =
+      hflag' Width8  "8bit"  "Use 8bit cells (default)"
+  <|> hflag' Width16 "16bit" "Use 16bit cells"
+  <|> hflag' Width32 "32bit" "Use 32bit cells"
+  <|> hflag' Width64 "64bit" "Use 64bit cells"
+  <|> pure   Width8
+
 parseEofMode :: Parser EofMode
 parseEofMode =
-      hflag' NoChange "eof-no-change" "Do not change the current cell on input EOF"
+      hflag' NoChange "eof-no-change" "Do not change the current cell on input EOF (default)"
   <|> hflag' Zero     "eof-zero"      "Set the current cell to zero on input EOF"
   <|> hflag' MinusOne "eof-minus-one" "Set the current cell to -1 on input EOF"
   <|> pure   NoChange
@@ -113,8 +120,8 @@ parserInfo =
 handler :: Options -> IO ()
 handler Options{..} =
   case mode of
-    Interpret s -> handleInterpret s eofMode
-    Compile o   -> handleCompile o eofMode
+    Interpret s b -> handleInterpret s eofMode b
+    Compile o     -> handleCompile o eofMode
   where
     getSource s = AST.optimize <$> sourceOrError s
 
@@ -124,7 +131,9 @@ handler Options{..} =
 
     die e = error $ "Fatal error: " <> show e
 
-    handleInterpret s m = getSource s >>= void . Interpreter.interpretIO' m
+    handleInterpret s m b =
+          getSource s
+      >>= Interpreter.runInterpretIO m b
 
     handleCompile CompileOpts{..} m = do
       p <- getSource source

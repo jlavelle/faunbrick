@@ -2,9 +2,11 @@ module Main where
 
 import Criterion.Main
 import qualified Data.Text.Lazy.IO as LT
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy.Builder as B
 import Data.Functor ((<&>))
+import Data.Text.Lazy (Text)
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Builder as BS
+import Data.Word (Word8)
 
 import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
@@ -57,17 +59,20 @@ setupInterpEnv = do
 setupOptimizerEnv :: IO Program
 setupOptimizerEnv = parseFile' "programs/mandel.b"
 
-interpretPureOut :: Program -> Text
-interpretPureOut p = case interpretPure' p of
-  Left e -> error $ "Benchmark: Interpretation error " <> show e
-  Right (_, t) -> B.toLazyText $ textHandleOut t
+interpretPureOut :: Program -> ByteString
+interpretPureOut = fromE . interpretPure' @Word8
 
-interpretPureTapeOut :: Program -> Text
-interpretPureTapeOut p = case interpret NoChange defaultTape defaultTextHandle p of
-  Left e -> error $ "Benchmark: Interpretation error " <> show e
-  Right (_, t) -> B.toLazyText $ textHandleOut t
+interpretPureTapeOut :: Program -> ByteString
+interpretPureTapeOut = fromE . interpret NoChange (defaultTape @Word8) defaultTextHandle
 
-interpretIO'' :: Program -> IO Text
-interpretIO'' p = defaultMVecMem >>= \m -> interpret NoChange m defaultTextHandle p <&> f . snd
-  where
-    f t = B.toLazyText $ textHandleOut t
+interpretIO'' :: Program -> IO ByteString
+interpretIO'' p =
+      defaultMVecMem @Word8
+  >>= \m -> interpret NoChange m defaultTextHandle p <&> toLBS . snd
+
+fromE :: Show a => Either a (b, TextHandle c) -> ByteString
+fromE (Left e) = error $ "Benchmark: Interpretation error " <> show e
+fromE (Right (_, t)) = toLBS t
+
+toLBS :: TextHandle a -> ByteString
+toLBS = BS.toLazyByteString . textHandleOut

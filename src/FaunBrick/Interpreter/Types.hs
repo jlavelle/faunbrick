@@ -3,17 +3,18 @@ module FaunBrick.Interpreter.Types where
 import Control.Monad.Except (MonadError(..), liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Vector.Primitive.Mutable (IOVector)
+import Data.Primitive.Types (Prim)
 import qualified Data.Vector.Generic.Mutable as MV
 import qualified GHC.IO.Handle as GHC
-import Data.Word (Word8)
+import Data.Word (Word8, Word16, Word32, Word64)
 import qualified Data.Text.Lazy as LT
-import qualified Data.Text.Lazy.Builder as B
 import Data.Functor (($>))
-import Data.Maybe (fromJust, maybe)
+import Data.Maybe (maybe)
 import Data.ByteString.Internal (c2w, w2c)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
 import System.IO.Error (isEOFError, catchIOError)
+import qualified Data.ByteString.Builder as BS
 
 data Error = OutOfBounds deriving Show
 
@@ -24,10 +25,10 @@ class Memory e m where
   writeCell   :: e -> Int -> Cell e -> m e
   modifyCell  :: e -> Int -> (Cell e -> Cell e) -> m e
 
-data MVecMem = MVecMem !(IOVector Word8) !Int
+data MVecMem a = MVecMem !(IOVector a) !Int
 
-instance MonadIO m => Memory MVecMem m where
-  type Cell MVecMem = Word8
+instance (Prim a, MonadIO m) => Memory (MVecMem a) m where
+  type Cell (MVecMem a) = a
   readCell (MVecMem v i) o = liftIO $ MV.unsafeRead v (i + o)
   {-# INLINE readCell #-}
   movePointer (MVecMem v i) f = pure $ MVecMem v $ f i
@@ -37,10 +38,10 @@ instance MonadIO m => Memory MVecMem m where
   modifyCell e@(MVecMem v i) o f = liftIO $ MV.modify v f (i + o) $> e
   {-# INLINE modifyCell #-}
 
-data IntMapMem = IntMapMem !(IntMap Word8) !Int
+data IntMapMem a = IntMapMem !(IntMap a) !Int
 
-instance Applicative m => Memory IntMapMem m where
-  type Cell IntMapMem = Word8
+instance (Integral a, Applicative m) => Memory (IntMapMem a) m where
+  type Cell (IntMapMem a) = a
   readCell (IntMapMem m p) o = pure $ M.findWithDefault 0 (p + o) m
   {-# INLINE readCell #-}
   movePointer (IntMapMem m p) f = pure $ IntMapMem m $ f p
@@ -54,9 +55,9 @@ instance Applicative m => Memory IntMapMem m where
 
 data Tape a = Tape [a] a [a] deriving Show
 
--- NB: the Tape doesn't perform as well as the IntMap with the offset optimization
-instance MonadError Error m => Memory (Tape Word8) m where
-  type Cell (Tape Word8) = Word8
+-- NB: the Tape may not perform as well as the IntMap with the offset optimization
+instance (Integral a, MonadError Error m) => Memory (Tape a) m where
+  type Cell (Tape a) = a
   readCell t o = readFocus <$> liftEither (diffMove t (+ o))
   {-# INLINE readCell #-}
   movePointer t = liftEither . diffMove t
@@ -102,46 +103,77 @@ diffMove t f =
     _  -> Right t
 {-# INLINE diffMove #-}
 
-class Handle h m where
-  type Out h
-  output :: h -> Out h -> m h
-  input  :: h -> m (Maybe (Out h), h)
+class Packable a where
+  pack     :: a -> BS.Builder
+  fromChar :: Char -> a
+  default fromChar :: Enum a => Char -> a
+  fromChar = toEnum . fromEnum
 
-data IOHandle = IOHandle
+instance Packable Word8 where
+  pack = BS.word8
+  {-# INLINE pack #-}
+  fromChar = charToWord
+  {-# INLINE fromChar #-}
+
+-- We try to downcast larger Words to Word8 so the resulting ByteString
+-- is not padded if possible.  Not sure if this makes sense or not yet,
+-- but it works for programs like pi.b
+instance Packable Word16 where
+  pack a = maybe (BS.word16LE a) pack $ truncatable (maxBound @Word8) a
+  {-# INLINE pack #-}
+
+instance Packable Word32 where
+  pack a = maybe (BS.word32LE a) pack $ truncatable (maxBound @Word16) a
+  {-# INLINE pack #-}
+
+instance Packable Word64 where
+  pack a = maybe (BS.word64LE a) pack $ truncatable (maxBound @Word32) a
+  {-# INLINE pack #-}
+
+truncatable :: (Integral a, Integral b) => a -> b -> Maybe a
+truncatable a b = if b <= fromIntegral a then Just (fromIntegral b) else Nothing
+{-# INLINE truncatable #-}
+
+class Packable (Out h) => Handle h m where
+  type Out h
+  output  :: h -> Out h -> m h
+  input   :: h -> m (Maybe (Out h), h)
+
+data IOHandle a = IOHandle
   { ioHandleIn  :: GHC.Handle
   , ioHandleOut :: GHC.Handle
   }
 
-instance MonadIO m => Handle IOHandle m where
-  type Out IOHandle = Word8
-  output h@(IOHandle _ o) a = liftIO $ GHC.hPutChar o (wordToChar a) $> h
+instance (Packable a, MonadIO m) => Handle (IOHandle a) m where
+  type Out (IOHandle a) = a
+  output h@(IOHandle _ o) a = liftIO $ BS.hPutBuilder o (pack a) $> h
   {-# INLINE output #-}
   input h@(IOHandle i _) = liftIO $ do
-    c <- catchIOError (Just . charToWord <$> GHC.hGetChar i) handler
+    c <- catchIOError (Just . fromChar <$> GHC.hGetChar i) handler
     pure (c, h)
     where
       handler e = if isEOFError e then pure Nothing else ioError e
   {-# INLINE input #-}
 
-data TextHandle = TextHandle
+data TextHandle a = TextHandle
   { textHandleIn  :: LT.Text
-  , textHandleOut :: B.Builder
+  , textHandleOut :: BS.Builder
   }
 
-instance Applicative m => Handle TextHandle m where
-  type Out TextHandle = Word8
+instance (Packable a, Applicative m) => Handle (TextHandle a) m where
+  type Out (TextHandle a) = a
   output t = pure . thOut t
   {-# INLINE output #-}
   input = pure . thIn
   {-# INLINE input #-}
 
-thOut :: TextHandle -> Word8 -> TextHandle
-thOut (TextHandle i o) a = TextHandle i $ o <> B.singleton (wordToChar a)
+thOut :: Packable a => TextHandle a -> a -> TextHandle a
+thOut (TextHandle i o) a = TextHandle i $ o <> pack a
 {-# INLINE thOut #-}
 
-thIn :: TextHandle -> (Maybe Word8, TextHandle)
+thIn :: Packable a => TextHandle a -> (Maybe a, TextHandle a)
 thIn h@(TextHandle i o) = case LT.uncons i of
-  Just (a, r) -> (Just $ charToWord a, TextHandle r o)
+  Just (a, r) -> (Just $ fromChar a, TextHandle r o)
   Nothing -> (Nothing, h)
 {-# INLINE thIn #-}
 
