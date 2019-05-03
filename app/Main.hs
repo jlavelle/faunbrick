@@ -20,6 +20,7 @@ subcommand n d p = hsubparser
   (  command n (info p (fullDesc <> progDesc d))
   <> metavar n
   )
+
 mode :: Parser Mode
 mode = subcommand "interpret" "Interpret a file" interpretOpts
    <|> subcommand "compile" "Compile a file to another language" compileOpts
@@ -43,8 +44,9 @@ handler (Compile l s d) = case l of
 main :: IO ()
 main = execParser p >>= handler
   where
-    p = info mode
+    p = info (helper <*> mode)
       (  fullDesc
       <> progDesc "Interpret or compile a Brainfuck source file."
+      <> header "faunbrick - An optimizing Brainfuck interpreter & compiler"
       )
 
