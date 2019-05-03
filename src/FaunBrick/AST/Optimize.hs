@@ -31,9 +31,10 @@ type Optimization = Program -> Program
 optimize :: Optimization
 optimize = eqFix
          $ dedupMulSet
+         . collapseIfClears
          . uninterpose
-         . elimClears
          . offsets
+         . elimClears
          . fuse
          . contract
          . loopsToMul
@@ -244,6 +245,13 @@ loopsToIfs = cata go
           _ -> True
 
     analyze _ = Nothing
+
+collapseIfClears :: Optimization
+collapseIfClears = cata go
+  where
+    go HaltF = Halt
+    go (IfF (Instr (Set 0 0) Halt) r) = Instr (Set 0 0) r
+    go x = embed x
 
 embedC :: Corecursive t => Base t (Cofree (Base t) t) -> t
 embedC = embed . fmap extract

@@ -37,6 +37,7 @@ subOpts f = zip [0..] opts
       , elimClears
       , uninterpose
       , dedupMulSet
+      , collapseIfClears
       ]
 
 progOpts :: (forall a. [a] -> [[a]]) -> Program -> [(Int, Program)]
