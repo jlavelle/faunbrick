@@ -36,7 +36,7 @@ cLang =
         <> "int main(void) {\n"
         <> "    uint8_t m[" <> showt (getMemSize memorySize) <> "] = {0}" <> ceol
         <> "    uint8_t *p = &m[" <> showt (getOffset initialOffset) <> "]" <> ceol
-      bottom = "    return 1;" <> ceol <> "}"
+      bottom = "    return 1" <> ceol <> "}"
       indentBody = True
       encoder = cEncoder
   in Language{..}

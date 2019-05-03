@@ -19,7 +19,7 @@ data ImperativeEncoder = ImperativeEncoder
 imperativeEncoder :: ImperativeEncoder -> Encoder
 imperativeEncoder ImperativeEncoder{..} =
   let output (OutFunc f) o = f <> bracket (iMemAccess o)
-      input (InFunc f) o = iMemAccess o <> " = "  <> f
+      input (InFunc f) o = iMemAccess o <> " = "  <> f <> bracket (iMemAccess o)
       mulUpdate s d n = mulExpr iMemAccess s d n " += "
       mulSet s d n = mulExpr iMemAccess s d n " = "
       update o n = iMemAccess o <> plusEq n
