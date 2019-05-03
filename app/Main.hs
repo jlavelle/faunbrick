@@ -1,70 +1,50 @@
 module Main where
 
-import Control.Monad (void, replicateM_)
+import Options.Applicative
+import Control.Monad (void)
 
-import qualified Data.Text.Lazy.IO as T
-import qualified Data.Text.Lazy.Builder as B
-import Data.Time (getCurrentTime, diffUTCTime)
-import Data.Monoid (Endo(..))
-import Data.Foldable (fold, traverse_)
-import Data.List (inits)
-import Control.DeepSeq (force)
-
-import FaunBrick.Interpreter (interpretIO', interpretPure')
+import FaunBrick.Interpreter (interpretIO')
+import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFile)
-import FaunBrick.AST.Optimize
-import FaunBrick.AST (Program)
-import FaunBrick.Interpreter.Types (TextHandle(..))
+import FaunBrick.Compiler.JS (compileJS)
+import FaunBrick.Compiler.C (compileC)
 
-runFile :: FilePath -> IO ()
-runFile p = void $ optimize <$> parseFile p >>= flip timed p
+data Language = JS | C
 
-runFilePure :: FilePath -> IO ()
-runFilePure p = void $ interpretPure' . optimize <$> parseFile p >>= f
+data Mode
+  = Interpret FilePath
+  | Compile Language FilePath FilePath
+
+subcommand :: String -> String -> Parser a -> Parser a
+subcommand n d p = hsubparser
+  (  command n (info p (fullDesc <> progDesc d))
+  <> metavar n
+  )
+mode :: Parser Mode
+mode = subcommand "interpret" "Interpret a file" interpretOpts
+   <|> subcommand "compile" "Compile a file to another language" compileOpts
   where
-    f (Right (_, t)) = T.putStrLn $ B.toLazyText $ textHandleOut t
-    f (Left e) = error $ "runFilePure: Interpreter error " <> show e
+    interpretOpts = Interpret <$> argument str (metavar "FILE" <> help "File to interpret")
+    compileOpts = Compile
+              <$> parseLanguage
+              <*> argument str (metavar "SOURCE" <> help "Source file")
+              <*> argument str (metavar "DESTINATION" <> help "Destination file")
 
-subOpts :: (forall a. [a] -> [[a]]) -> [(Int, Optimization)]
-subOpts f = zip [0..] opts
-  where
-    opts = fmap (eqFix . appEndo . fold) $ f $ fmap Endo
-      [ loopsToIfs
-      , loopsToMul
-      , contract
-      , fuse
-      , offsets
-      , elimClears
-      , uninterpose
-      , dedupMulSet
-      ]
+parseLanguage :: Parser Language
+parseLanguage = subcommand "js" "Compile a file to JavaScript" (pure JS)
+            <|> subcommand "c" "Compile a file to C" (pure C)
 
-progOpts :: (forall a. [a] -> [[a]]) -> Program -> [(Int, Program)]
-progOpts f p = fmap (fmap ($ p)) $ subOpts f
+handler :: Mode -> IO ()
+handler (Interpret p) = void $ optimize <$> parseFile p >>= interpretIO'
+handler (Compile l s d) = case l of
+  JS -> compileJS s d
+  C  -> compileC s d
 
 main :: IO ()
-main = do
-  p <- parseFile "programs/hanoi.b"
-  let ps = force $ progOpts inits p
-  r <- traverse go (tail $ tail $ tail $ ps)
-  traverse_ putStrLn r
-  runFile "programs/mandel.b"
+main = execParser p >>= handler
   where
-    go (i, p) = timed' p 20 ("Hanoi with opt " <> show i)
+    p = info mode
+      (  fullDesc
+      <> progDesc "Interpret or compile a Brainfuck source file."
+      )
 
-
-timed :: Program -> String -> IO ()
-timed p s = do
-  putStrLn s
-  t <- getCurrentTime
-  putStrLn $ "Started at " <> show t
-  interpretIO' p
-  t' <- getCurrentTime
-  putStrLn $ "Runtime: " <> show (diffUTCTime t' t)
-
-timed' :: Program -> Int -> String -> IO String
-timed' p n s = do
-  t <- getCurrentTime
-  replicateM_ n $ interpretIO' p
-  t' <- getCurrentTime
-  pure (s <> " with " <> show n <> "iterations: " <> show (diffUTCTime t' t))
