@@ -19,16 +19,18 @@ import qualified FaunBrick.Compiler.C
 
 data Options = Options
   { mode    :: Mode
-  , source  :: Either Text FilePath
   , eofMode :: EofMode
   }
 
 data Mode
-  = Interpret
+  = Interpret Source
   | Compile CompileOpts
+
+type Source = Either Text FilePath
 
 data CompileOpts = CompileOpts
   { language    :: Language
+  , source      :: Source
   , destination :: Maybe FilePath
   }
 
@@ -38,7 +40,6 @@ parseOptions :: Parser Options
 parseOptions =
       Options
   <$> parseMode
-  <*> parseSource
   <*> parseEofMode
 
 parseMode :: Parser Mode
@@ -46,7 +47,7 @@ parseMode =
       subcommand
         "interpret"
         "Interpret Brainfuck source"
-        (pure Interpret)
+        (Interpret <$> parseSource)
   <|> subcommand
         "compile"
         "Compile to Brainfuck to another language"
@@ -55,6 +56,7 @@ parseMode =
     parseCompileOpts =
           CompileOpts
       <$> parseLanguage
+      <*> parseSource
       <*> optional parseDestination
 
     parseLanguage =
@@ -109,23 +111,25 @@ parserInfo =
   )
 
 handler :: Options -> IO ()
-handler Options{..} = do
-  src <- AST.optimize <$> sourceOrError source
+handler Options{..} =
   case mode of
-    Interpret -> handleInterpret eofMode src
-    Compile o -> handleCompile o eofMode src
+    Interpret s -> handleInterpret s eofMode
+    Compile o   -> handleCompile o eofMode
   where
+    getSource s = AST.optimize <$> sourceOrError s
+
     sourceOrError s =
           either (pure . Parser.parseFaunBrick) Parser.parseFile s
       >>= either die pure
 
     die e = error $ "Fatal error: " <> show e
 
-    handleInterpret m = void . Interpreter.interpretIO' m
+    handleInterpret s m = getSource s >>= void . Interpreter.interpretIO' m
 
-    handleCompile CompileOpts{..} m p =
+    handleCompile CompileOpts{..} m = do
+      p <- getSource source
       let c = compile language m p
-      in maybe (LT.putStrLn c) (`LT.writeFile` c) destination
+      maybe (LT.putStrLn c) (`LT.writeFile` c) destination
 
     compile l m p = case l of
       JS -> FaunBrick.Compiler.JS.compile m p
