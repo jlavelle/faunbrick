@@ -3,24 +3,31 @@
 module FaunBrick.Compiler.JS where
 
 import Data.Text (Text)
+import qualified Data.Text.Lazy as LT
 import TextShow
 
-import FaunBrick.AST.Optimize (optimize)
-import FaunBrick.Compiler.Language
+import FaunBrick.Compiler.Language hiding (compile)
+import qualified FaunBrick.Compiler.Language as Language
 import FaunBrick.Compiler.Language.Imperative
+import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.AST (Program)
 
-compileJS :: FilePath -> FilePath -> IO ()
-compileJS = compileFile jsLang jsOpts
+compile :: EofMode -> Program -> LT.Text
+compile m = Language.compile jsLang (jsOpts m)
 
-jsOpts :: Options
-jsOpts =
+compile' :: FilePath -> FilePath -> IO ()
+compile' = Language.compileFile jsLang (jsOpts NoChange)
+
+jsOpts :: EofMode -> Options
+jsOpts m =
   let memorySize = MemSize 100000
       initialOffset = Offset 1000
       outputFunction = OutFunc "out"
       inputFunction = InFunc "in"
-      optimization = optimize
+      eofMode = m
   in Options{..}
 
+-- TODO: Actual in function
 jsLang :: Language
 jsLang =
   let top Options{..} =

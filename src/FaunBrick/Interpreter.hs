@@ -11,47 +11,47 @@ import FaunBrick.Interpreter.Types (
   Error,
   IOHandle,
   MVecMem,
-  EofMode(..)
   )
 import qualified FaunBrick.Interpreter.Util as Util
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
+import FaunBrick.Common.Types (EofMode(..))
 
 type InterpretM e h m =
   (Monad m, Memory e m, Handle h m, Integral (Out h), Integral (Cell e), Cell e ~ Out h)
 
+{-# INLINE interpret #-}
 interpret :: InterpretM e h m => EofMode -> e -> h -> Program -> m (e, h)
 interpret eofMode e'' h'' p = go e'' h'' p
   where
     {-# INLINE go #-}
     go e h = \case
-      Halt -> pure (e, h)
-      Instr i r -> step i >>= \(e', h') -> go e' h' r
-      If bs r -> branch bs >>= \(e', h') -> go e' h' r
+      Halt      -> pure (e, h)
+      Instr i r -> step i      >>= \(e', h') -> go e' h' r
+      If bs r   -> branch bs   >>= \(e', h') -> go e' h' r
       Loop bs r -> loop e h bs >>= \(e', h') -> go e' h' r
+
       where
         {-# INLINE branch #-}
         branch bs = do
           c <- readCell e 0
-          if c == 0
-            then pure (e, h)
-            else go e h bs
+          if c == 0 then pure (e, h)
+                    else go e h bs
 
         {-# INLINE loop #-}
         loop le lh bs = do
           c <- readCell le 0
-          if c == 0
-            then pure (le, lh)
-            else go le lh bs >>= \(e', h') -> loop e' h' bs
+          if c == 0 then pure (le, lh)
+                    else go le lh bs >>= \(e', h') -> loop e' h' bs
 
         {-# INLINE step #-}
         step = \case
-          Output o -> writeOutput e h o
-          Input o -> readInput eofMode e h o
-          Update o n -> (,h) <$> modifyCell e o (+ fromIntegral n)
-          Jump n -> (,h) <$> movePointer e (+ n)
-          Set o n -> (,h) <$> writeCell e o (fromIntegral n)
+          Output o        -> writeOutput e h o
+          Input o         -> readInput eofMode e h o
+          Update o n      -> (,h) <$> modifyCell e o (+ fromIntegral n)
+          Jump n          -> (,h) <$> movePointer e (+ n)
+          Set o n         -> (,h) <$> writeCell e o (fromIntegral n)
           MulUpdate s d n -> (,h) <$> mulUpdate e s d n
-          MulSet s d n -> (,h) <$> mulSet e s d n
+          MulSet s d n    -> (,h) <$> mulSet e s d n
 
 mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
 mulUpdate e s d n = do
@@ -93,8 +93,8 @@ interpretPure t h = runIdentity . runExceptT . runPure . interpret NoChange t h
 interpretPure' :: Program -> Either Error (IntMapMem, TextHandle)
 interpretPure' = interpretPure Util.defaultIntMapMem Util.defaultTextHandle
 
-interpretIO :: MVecMem -> IOHandle -> Program -> IO (MVecMem, IOHandle)
-interpretIO = interpret NoChange
+interpretIO :: EofMode -> MVecMem -> IOHandle -> Program -> IO (MVecMem, IOHandle)
+interpretIO = interpret
 
-interpretIO' :: Program -> IO (MVecMem, IOHandle)
-interpretIO' p = Util.defaultMVecMem >>= \m -> interpretIO m Util.defaultIOHandle p
+interpretIO' :: EofMode -> Program -> IO (MVecMem, IOHandle)
+interpretIO' em p = Util.defaultMVecMem >>= \m -> interpretIO em m Util.defaultIOHandle p

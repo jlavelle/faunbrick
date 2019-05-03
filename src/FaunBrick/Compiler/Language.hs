@@ -4,14 +4,15 @@ module FaunBrick.Compiler.Language where
 
 import Data.Text (Text)
 import Data.Text.Lazy.Builder (Builder)
+import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
 import qualified Data.Text.Lazy.Builder as B
 import Data.Foldable (fold)
 import Data.Maybe (fromMaybe)
 
-import FaunBrick.AST.Optimize (Optimization)
 import FaunBrick.AST (Program, Instruction(..), FaunBrick(..))
-import FaunBrick.Parser (parseFile)
+import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.Parser (parseFile')
 
 newtype MemSize = MemSize { getMemSize :: Int }
 newtype Offset = Offset { getOffset :: Int }
@@ -23,7 +24,7 @@ data Options = Options
   , initialOffset  :: Offset
   , outputFunction :: OutFunc
   , inputFunction  :: InFunc
-  , optimization   :: Optimization
+  , eofMode        :: EofMode
   }
 
 data Language = Language
@@ -51,14 +52,17 @@ data Encoder = Encoder
 
 compileFile :: Language -> Options -> FilePath -> FilePath -> IO ()
 compileFile l o from to = do
-  src <- parseFile from
-  LT.writeFile to $ B.toLazyText $ compile l o src
+  src <- parseFile' from
+  LT.writeFile to $ compile l o src
 
-compile :: Language -> Options -> Program -> Builder
+compile :: Language -> Options -> Program -> LT.Text
 compile l@Language{..} o@Options{..} p =
-  B.fromText (top o) <> go optimized bodyIndent <> B.fromText bottom
+  B.toLazyText
+  (  B.fromText (top o)
+  <> go p bodyIndent
+  <> B.fromText bottom
+  )
   where
-    optimized = optimization p
     bodyIndent = if indentBody then 1 else 0
 
     go :: Program -> Int -> Builder

@@ -17,12 +17,6 @@ import System.IO.Error (isEOFError, catchIOError)
 
 data Error = OutOfBounds deriving Show
 
-data EofMode
-  = NoChange
-  | MinusOne
-  | Zero
-  deriving Show
-
 class Memory e m where
   type Cell e
   readCell    :: e -> Int -> m (Cell e)

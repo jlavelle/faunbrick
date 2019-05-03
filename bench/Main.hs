@@ -8,9 +8,10 @@ import Data.Functor ((<&>))
 
 import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
-import FaunBrick.Parser (parseFaunBrick, parseFile)
+import FaunBrick.Parser (parseFaunBrick, parseFile')
 import FaunBrick.Interpreter (interpretPure', interpret)
-import FaunBrick.Interpreter.Types (TextHandle(..), EofMode(..))
+import FaunBrick.Interpreter.Types (TextHandle(..))
+import FaunBrick.Common.Types (EofMode(..))
 import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultTape)
 
 main :: IO ()
@@ -49,12 +50,12 @@ setupParseEnv = do
 
 setupInterpEnv :: IO (Program, Program, Program, Program)
 setupInterpEnv = do
-  l <- parseFile "programs/lorem.b"
-  b <- parseFile "programs/bottles.b"
+  l <- parseFile' "programs/lorem.b"
+  b <- parseFile' "programs/bottles.b"
   pure (l, optimize l, b, optimize b)
 
 setupOptimizerEnv :: IO Program
-setupOptimizerEnv = parseFile "programs/mandel.b"
+setupOptimizerEnv = parseFile' "programs/mandel.b"
 
 interpretPureOut :: Program -> Text
 interpretPureOut p = case interpretPure' p of

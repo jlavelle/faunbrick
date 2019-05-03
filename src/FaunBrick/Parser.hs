@@ -1,4 +1,4 @@
-module FaunBrick.Parser (parseFaunBrick, parseFile) where
+module FaunBrick.Parser (parseFaunBrick, parseFile, parseFile') where
 
 import Data.Attoparsec.Text.Lazy
 import Data.Functor (($>))
@@ -8,15 +8,18 @@ import qualified Data.Text.Lazy.IO as LT
 import Data.Text.Lazy (Text)
 import Control.Applicative ((<|>))
 
-import FaunBrick.AST (FaunBrick(..), Instruction(..))
+import FaunBrick.AST (FaunBrick(..), Instruction(..), Program)
 import FaunBrick.AST.Util (single)
 
-parseFile :: FilePath -> IO (FaunBrick Instruction)
-parseFile p = either err id . parseFaunBrick <$> LT.readFile p
+parseFile :: FilePath -> IO (Either String Program)
+parseFile p = parseFaunBrick <$> LT.readFile p
+
+parseFile' :: FilePath -> IO Program
+parseFile' = fmap (either err id) . parseFile
   where
     err e = error $ "Parse error: " <> e
 
-parseFaunBrick :: Text -> Either String (FaunBrick Instruction)
+parseFaunBrick :: Text -> Either String Program
 parseFaunBrick = toEither . parse bricks . sanitize
   where
     toEither (Done _ r)   = Right r

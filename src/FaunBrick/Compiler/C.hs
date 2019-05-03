@@ -3,22 +3,28 @@
 module FaunBrick.Compiler.C where
 
 import Data.Text (Text)
+import qualified Data.Text.Lazy as LT
 import TextShow
 
-import FaunBrick.Compiler.Language
+import FaunBrick.Compiler.Language hiding (compile)
+import qualified FaunBrick.Compiler.Language as Language
 import FaunBrick.Compiler.Language.Imperative
-import FaunBrick.AST.Optimize (optimize)
+import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.AST (Program)
 
-compileC :: FilePath -> FilePath -> IO ()
-compileC = compileFile cLang cOpts
+compile :: EofMode -> Program -> LT.Text
+compile m = Language.compile cLang (cOpts m)
 
-cOpts :: Options
-cOpts =
+compile' :: FilePath -> FilePath -> IO ()
+compile' = Language.compileFile cLang (cOpts NoChange)
+
+cOpts :: EofMode -> Options
+cOpts m =
   let memorySize = MemSize 100000
       initialOffset = Offset 1000
       outputFunction = OutFunc "putchar"
       inputFunction = InFunc "in"
-      optimization = optimize
+      eofMode = m
   in Options{..}
 
 cLang :: Language
@@ -26,10 +32,7 @@ cLang =
   let top Options{..} =
            "#include <stdint.h>\n"
         <> "#include <stdio.h>\n"
-        <> "static uint8_t in() {\n"
-        <> "    int temp = getchar()" <> ceol
-        <> "    return (uint8_t)(temp != EOF ? temp : 0)" <> ceol
-        <> "}\n\n"
+        <> cInFunc inputFunction eofMode
         <> "int main(void) {\n"
         <> "    uint8_t m[" <> showt (getMemSize memorySize) <> "] = {0}" <> ceol
         <> "    uint8_t *p = &m[" <> showt (getOffset initialOffset) <> "]" <> ceol
@@ -51,3 +54,15 @@ cEncoder = imperativeEncoder ie
 
 memAccess :: Int -> Text
 memAccess n = "p[" <> showt n <> "]"
+
+cInFunc :: InFunc -> EofMode -> Text
+cInFunc (InFunc f) m =
+     "static uint8_t " <> f <> "(uint8_t val) {\n"
+  <> "    int temp = getchar()" <> ceol
+  <> "    return (uint8_t)(temp != EOF ? temp : " <> eofVal <> ")" <> ceol
+  <> "}\n"
+  where
+    eofVal = case m of
+      NoChange -> "val"
+      Zero     -> "0"
+      MinusOne -> "-1"
