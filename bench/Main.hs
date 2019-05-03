@@ -10,7 +10,7 @@ import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFaunBrick, parseFile)
 import FaunBrick.Interpreter (interpretPure', interpret)
-import FaunBrick.Interpreter.Types (TextHandle(..), UnsafeTextHandle(..))
+import FaunBrick.Interpreter.Types (TextHandle(..), EofMode(..))
 import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultTape)
 
 main :: IO ()
@@ -62,12 +62,11 @@ interpretPureOut p = case interpretPure' p of
   Right (_, t) -> B.toLazyText $ textHandleOut t
 
 interpretPureTapeOut :: Program -> Text
-interpretPureTapeOut p = case interpret defaultTape defaultTextHandle p of
+interpretPureTapeOut p = case interpret NoChange defaultTape defaultTextHandle p of
   Left e -> error $ "Benchmark: Interpretation error " <> show e
   Right (_, t) -> B.toLazyText $ textHandleOut t
 
 interpretIO'' :: Program -> IO Text
-interpretIO'' p = defaultMVecMem >>= \m -> interpret m unsafeHandle p <&> f . snd
+interpretIO'' p = defaultMVecMem >>= \m -> interpret NoChange m defaultTextHandle p <&> f . snd
   where
-    f (UnsafeTextHandle t) = B.toLazyText $ textHandleOut t
-    unsafeHandle = UnsafeTextHandle defaultTextHandle
+    f t = B.toLazyText $ textHandleOut t

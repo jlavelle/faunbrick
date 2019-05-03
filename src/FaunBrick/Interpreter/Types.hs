@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module FaunBrick.Interpreter.Types where
 
 import Control.Monad.Except (MonadError(..), liftEither)
@@ -15,10 +13,14 @@ import Data.Maybe (fromJust, maybe)
 import Data.ByteString.Internal (c2w, w2c)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as M
+import System.IO.Error (isEOFError, catchIOError)
 
-data Error
-  = OutOfBounds
-  | NoInput
+data Error = OutOfBounds deriving Show
+
+data EofMode
+  = NoChange
+  | MinusOne
+  | Zero
   deriving Show
 
 class Memory e m where
@@ -109,7 +111,7 @@ diffMove t f =
 class Handle h m where
   type Out h
   output :: h -> Out h -> m h
-  input  :: h -> m (Out h, h)
+  input  :: h -> m (Maybe (Out h), h)
 
 data IOHandle = IOHandle
   { ioHandleIn  :: GHC.Handle
@@ -120,7 +122,11 @@ instance MonadIO m => Handle IOHandle m where
   type Out IOHandle = Word8
   output h@(IOHandle _ o) a = liftIO $ GHC.hPutChar o (wordToChar a) $> h
   {-# INLINE output #-}
-  input h@(IOHandle i _) = liftIO $ (,h) . charToWord <$> GHC.hGetChar i
+  input h@(IOHandle i _) = liftIO $ do
+    c <- catchIOError (Just . charToWord <$> GHC.hGetChar i) handler
+    pure (c, h)
+    where
+      handler e = if isEOFError e then pure Nothing else ioError e
   {-# INLINE input #-}
 
 data TextHandle = TextHandle
@@ -128,30 +134,21 @@ data TextHandle = TextHandle
   , textHandleOut :: B.Builder
   }
 
-instance MonadError Error m => Handle TextHandle m where
+instance Applicative m => Handle TextHandle m where
   type Out TextHandle = Word8
   output t = pure . thOut t
   {-# INLINE output #-}
-  input = maybe (throwError NoInput) pure . thIn
-  {-# INLINE input #-}
-
-newtype UnsafeTextHandle = UnsafeTextHandle TextHandle
-
-instance Monad m => Handle UnsafeTextHandle m where
-  type Out UnsafeTextHandle = Word8
-  output (UnsafeTextHandle t) = pure . UnsafeTextHandle . thOut t
-  {-# INLINE output #-}
-  input (UnsafeTextHandle t)  = pure $ UnsafeTextHandle <$> fromJust (thIn t)
+  input = pure . thIn
   {-# INLINE input #-}
 
 thOut :: TextHandle -> Word8 -> TextHandle
 thOut (TextHandle i o) a = TextHandle i $ o <> B.singleton (wordToChar a)
 {-# INLINE thOut #-}
 
-thIn :: TextHandle -> Maybe (Word8, TextHandle)
-thIn (TextHandle i o) = case LT.uncons i of
-  Just (a, r) -> Just (charToWord a, TextHandle r o)
-  Nothing -> Nothing
+thIn :: TextHandle -> (Maybe Word8, TextHandle)
+thIn h@(TextHandle i o) = case LT.uncons i of
+  Just (a, r) -> (Just $ charToWord a, TextHandle r o)
+  Nothing -> (Nothing, h)
 {-# INLINE thIn #-}
 
 -- TODO: Don't use internal Bytestring functions
