@@ -1,6 +1,6 @@
 module Main where
 
-import Control.Monad (void)
+import Control.Monad (void, replicateM_)
 
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Builder as B
@@ -37,7 +37,6 @@ subOpts f = zip [0..] opts
       , elimClears
       , uninterpose
       , dedupMulSet
-      , collapseIfClears
       ]
 
 progOpts :: (forall a. [a] -> [[a]]) -> Program -> [(Int, Program)]
@@ -51,21 +50,21 @@ main = do
   traverse_ putStrLn r
   runFile "programs/mandel.b"
   where
-    go (i, p) = timed' p ("Hanoi with opt " <> show i)
+    go (i, p) = timed' p 20 ("Hanoi with opt " <> show i)
 
 
 timed :: Program -> String -> IO ()
 timed p s = do
   putStrLn s
   t <- getCurrentTime
-  putStrLn $ "Statred at " <> show t
+  putStrLn $ "Started at " <> show t
   interpretIO' p
   t' <- getCurrentTime
   putStrLn $ "Runtime: " <> show (diffUTCTime t' t)
 
-timed' :: Program -> String -> IO String
-timed' p s = do
+timed' :: Program -> Int -> String -> IO String
+timed' p n s = do
   t <- getCurrentTime
-  interpretIO' p
+  replicateM_ n $ interpretIO' p
   t' <- getCurrentTime
-  pure (s <> ": " <> show (diffUTCTime t' t))
+  pure (s <> " with " <> show n <> "iterations: " <> show (diffUTCTime t' t))

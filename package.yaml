@@ -79,7 +79,7 @@ library:
   source-dirs: src
 
 executables:
-  faunbrick-exe:
+  faunbrick:
     main:                Main.hs
     source-dirs:         app
     ghc-options:

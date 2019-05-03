@@ -31,7 +31,6 @@ type Optimization = Program -> Program
 optimize :: Optimization
 optimize = eqFix
          $ dedupMulSet
-         . collapseIfClears
          . uninterpose
          . offsets
          . elimClears
@@ -57,12 +56,13 @@ contract = cataBlocks instrEq comb
       _ -> a
     comb _ = error "Optimizer: Unexpected input to comb."
 
--- Turns [-] and [+] into zero Sets
+-- Turns [-], [+], and zero-setting ifs into zero Sets
 elimClears :: Optimization
 elimClears = cata go
   where
     go :: FaunBrickF Instruction Program -> Program
     go (LoopF (Instr (Update o _) Halt) r) = Instr (Set o 0) r
+    go (IfF (Instr (Set 0 0) Halt) r) = Instr (Set 0 0) r
     go x = embed x
 
 -- Fuses together certain commands that operate on the same offset or are redundant
@@ -245,13 +245,6 @@ loopsToIfs = cata go
           _ -> True
 
     analyze _ = Nothing
-
-collapseIfClears :: Optimization
-collapseIfClears = cata go
-  where
-    go HaltF = Halt
-    go (IfF (Instr (Set 0 0) Halt) r) = Instr (Set 0 0) r
-    go x = embed x
 
 embedC :: Corecursive t => Base t (Cofree (Base t) t) -> t
 embedC = embed . fmap extract
