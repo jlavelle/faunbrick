@@ -12,43 +12,40 @@ import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.Parser (parseFaunBrick, parseFile')
 import FaunBrick.Interpreter (interpretPure', interpret)
-import FaunBrick.Interpreter.Types (TextHandle(..))
+import FaunBrick.Interpreter.Types (TextHandle(..), Error)
 import FaunBrick.Common.Types (EofMode(..))
-import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultTape)
+import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultIntMapMem)
 
 main :: IO ()
 main = defaultMain
-  [ env setupParseEnv $ \ ~(simple, fib, lorem) -> bgroup "Parser"
-    [ bench "parse simple.b" $ whnf parseFaunBrick simple
-    , bench "parse fib.b"    $ whnf parseFaunBrick fib
-    , bench "parse lorem.b"  $ whnf parseFaunBrick lorem
+  [ env setupParseEnv $ \hanoi -> bgroup "Parser"
+    [ bench "parse hanoi.b" $ whnf parseFaunBrick hanoi
     ]
   , env setupInterpEnv $ \ ~(lorem, loremO, bottles, bottlesO) -> bgroup "Interpreters"
     [ bgroup "Pure"
-      [ bench "interpret lorem.b"  $ nf interpretPureOut lorem
-      , bench "interpret lorem.b with optimizations" $ nf interpretPureOut loremO
-      , bench "interpret bottles.b" $ nf interpretPureOut bottles
-      , bench "interpret bottles.b with optimizations" $ nf interpretPureOut bottlesO
-      , bench "bottles.b with optimizations -- Tape" $ nf interpretPureTapeOut bottlesO
+      [ bench "lorem.b"  $ nf interpretPureOut lorem
+      , bench "lorem.b with optimizations -- IntMap 1" $ nf interpretPureIntMapOut loremO
+      , bench "lorem.b with optimizations" $ nf interpretPureOut loremO
+      , bench "lorem.b with optimizations -- IntMap" $ nf interpretPureIntMapOut loremO
+      , bench "bottles.b" $ nf interpretPureOut bottles
+      , bench "bottles.b with optimizations -- IntMap 1" $ nf interpretPureOut bottlesO
+      , bench "bottles.b with optimizations" $ nf interpretPureOut bottlesO
+      , bench "bottles.b with optimizations -- IntMap 2" $ nf interpretPureIntMapOut bottlesO
       ]
     , bgroup "IO"
-      [ bench "interpret lorem.b"  $ nfAppIO interpretIO'' lorem
-      , bench "interpret lorem.b with optimizations" $ nfAppIO interpretIO'' loremO
-      , bench "interpret bottles.b" $ nfAppIO interpretIO'' bottles
-      , bench "interpret bottles.b with optimizations" $ nfAppIO interpretIO'' bottlesO
+      [ bench "lorem.b" $ nfAppIO interpretIO'' lorem
+      , bench "lorem.b with optimizations" $ nfAppIO interpretIO'' loremO
+      , bench "bottles.b" $ nfAppIO interpretIO'' bottles
+      , bench "bottles.b with optimizations" $ nfAppIO interpretIO'' bottlesO
       ]
     ]
-    , env setupOptimizerEnv $ \mandel -> bgroup "Optimization"
-      [ bench "Optimize mandel.b" $ nf optimize mandel
+    , env setupOptimizerEnv $ \hanoi -> bgroup "Optimization"
+      [ bench "Optimize hanoi.b" $ nf optimize hanoi
       ]
   ]
 
-setupParseEnv :: IO (Text, Text, Text)
-setupParseEnv = do
-  s <- LT.readFile "programs/simple.b"
-  f <- LT.readFile "programs/fib.b"
-  l <- LT.readFile "programs/lorem.b"
-  pure (s, f, l)
+setupParseEnv :: IO Text
+setupParseEnv = LT.readFile "programs/hanoi.b"
 
 setupInterpEnv :: IO (Program, Program, Program, Program)
 setupInterpEnv = do
@@ -57,13 +54,14 @@ setupInterpEnv = do
   pure (l, optimize l, b, optimize b)
 
 setupOptimizerEnv :: IO Program
-setupOptimizerEnv = parseFile' "programs/mandel.b"
+setupOptimizerEnv = parseFile' "programs/hanoi.b"
 
 interpretPureOut :: Program -> ByteString
 interpretPureOut = fromE . interpretPure' @Word8
 
-interpretPureTapeOut :: Program -> ByteString
-interpretPureTapeOut = fromE . interpret NoChange (defaultTape @Word8) defaultTextHandle
+interpretPureIntMapOut :: Program -> ByteString
+interpretPureIntMapOut = fromE @Error
+                       . interpret NoChange (defaultIntMapMem @Word8) defaultTextHandle
 
 interpretIO'' :: Program -> IO ByteString
 interpretIO'' p =

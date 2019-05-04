@@ -72,6 +72,7 @@ tapeMod t o f = do
   t1 <- liftEither $ diffMove t (+ o)
   let t2 = modifyFocus f t1
   liftEither $ diffMove t2 (subtract o)
+{-# INLINE tapeMod #-}
 
 readFocus :: Tape a -> a
 readFocus (Tape _ a _) = a

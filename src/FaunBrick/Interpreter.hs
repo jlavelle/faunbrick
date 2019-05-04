@@ -12,7 +12,7 @@ import FaunBrick.Interpreter.Types (
   Handle(..),
   Packable,
   TextHandle,
-  IntMapMem,
+  Tape,
   Error,
   IOHandle,
   MVecMem,
@@ -25,10 +25,11 @@ type InterpretM e h m =
   (Monad m, Memory e m, Handle h m, Integral (Out h), Integral (Cell e), Cell e ~ Out h)
 
 {-# INLINE interpret #-}
-interpret :: InterpretM e h m => EofMode -> e -> h -> Program -> m (e, h)
+interpret :: forall e h m. InterpretM e h m => EofMode -> e -> h -> Program -> m (e, h)
 interpret eofMode e'' h'' p = go e'' h'' p
   where
     {-# INLINE go #-}
+    go :: e -> h -> Program -> m (e, h)
     go e h = \case
       Halt      -> pure (e, h)
       Instr i r -> step i      >>= \(e', h') -> go e' h' r
@@ -37,18 +38,21 @@ interpret eofMode e'' h'' p = go e'' h'' p
 
       where
         {-# INLINE branch #-}
+        branch :: Program -> m (e, h)
         branch bs = do
           c <- readCell e 0
           if c == 0 then pure (e, h)
                     else go e h bs
 
         {-# INLINE loop #-}
+        loop :: e -> h -> Program -> m (e, h)
         loop le lh bs = do
           c <- readCell le 0
           if c == 0 then pure (le, lh)
                     else go le lh bs >>= \(e', h') -> loop e' h' bs
 
         {-# INLINE step #-}
+        step :: Instruction -> m (e, h)
         step = \case
           Output o        -> writeOutput e h o
           Input o         -> readInput eofMode e h o
@@ -93,16 +97,18 @@ newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
            )
 
 interpretPure :: (Integral a, Packable a)
-              => IntMapMem a
+              => Tape a
               -> TextHandle a
               -> Program
-              -> Either Error (IntMapMem a, TextHandle a)
+              -> Either Error (Tape a, TextHandle a)
 interpretPure t h = runIdentity . runExceptT . runPure . interpret NoChange t h
+{-# INLINE interpretPure #-}
 
 interpretPure' :: (Integral a, Packable a)
                => Program
-               -> Either Error (IntMapMem a, TextHandle a)
-interpretPure' = interpretPure Util.defaultIntMapMem Util.defaultTextHandle
+               -> Either Error (Tape a, TextHandle a)
+interpretPure' = interpretPure Util.defaultTape Util.defaultTextHandle
+{-# INLINE interpretPure' #-}
 
 interpretIO :: (Integral a, Packable a, Prim a)
              => EofMode
@@ -110,6 +116,7 @@ interpretIO :: (Integral a, Packable a, Prim a)
              -> Proxy a
              -> IO (MVecMem a, IOHandle a)
 interpretIO em p _ = Util.defaultMVecMem >>= \m -> interpret em m Util.defaultIOHandle p
+{-# INLINE interpretIO #-}
 
 runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
 runInterpretIO m b p = case b of
@@ -117,3 +124,4 @@ runInterpretIO m b p = case b of
   Width16 -> void $ interpretIO m p (Proxy @Word16)
   Width32 -> void $ interpretIO m p (Proxy @Word32)
   Width64 -> void $ interpretIO m p (Proxy @Word64)
+{-# INLINE runInterpretIO #-}
