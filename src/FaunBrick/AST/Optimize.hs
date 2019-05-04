@@ -250,4 +250,4 @@ embedC :: Corecursive t => Base t (Cofree (Base t) t) -> t
 embedC = embed . fmap extract
 
 eqFix :: Eq a => (a -> a) -> a -> a
-eqFix f a = let r = f a in if r == a then r else eqFix f (f r)
+eqFix f a = let r = f a in if r == a then r else eqFix f r

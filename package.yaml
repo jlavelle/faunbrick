@@ -28,6 +28,7 @@ dependencies:
 - free
 - comonad
 - text-show
+- template-haskell
 
 ghc-options:
 - -Wall

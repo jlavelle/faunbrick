@@ -20,7 +20,7 @@ parseFile' = fmap (either err id) . parseFile
     err e = error $ "Parse error: " <> e
 
 parseFaunBrick :: Text -> Either String Program
-parseFaunBrick = toEither . parse bricks . sanitize
+parseFaunBrick = toEither . parse (bricks <|> pure Halt) . sanitize
   where
     toEither (Done _ r)   = Right r
     toEither (Fail _ _ s) = Left s

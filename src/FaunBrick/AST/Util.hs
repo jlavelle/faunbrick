@@ -1,5 +1,7 @@
 module FaunBrick.AST.Util where
 
+import Prelude hiding (replicate)
+
 import Data.Data (toConstr)
 import Data.Monoid (Sum(..))
 import Data.Functor.Foldable (cata)
@@ -7,6 +9,10 @@ import Control.Applicative ((<|>))
 import Control.Monad ((>=>))
 
 import FaunBrick.AST
+
+replicate :: (Ord a, Num a) => a -> b -> FaunBrick b
+replicate n b | n <= 0    = Halt
+              | otherwise = Instr b $ replicate (n - 1) b
 
 groupBy :: (a -> a -> Bool) -> FaunBrick a -> FaunBrick (FaunBrick a)
 groupBy _ Halt = Halt

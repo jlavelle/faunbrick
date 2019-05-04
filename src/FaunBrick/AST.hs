@@ -15,7 +15,7 @@ data FaunBrick a
   | Loop (FaunBrick a) (FaunBrick a)
   | If (FaunBrick a) (FaunBrick a)
   | Halt
-  deriving (Functor, Foldable, Traversable, Eq, Show, Generic, Generic1)
+  deriving (Functor, Foldable, Traversable, Eq, Show, Generic, Generic1, Data)
 
 instance NFData a => NFData (FaunBrick a)
 instance NFData1 FaunBrick
