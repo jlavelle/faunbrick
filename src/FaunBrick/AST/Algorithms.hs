@@ -10,6 +10,7 @@ import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor)
 import Control.Monad.Except
 import Data.Text (Text)
 import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.IO as LT
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as B
 import Data.Semigroup (stimesMonoid)
@@ -20,13 +21,15 @@ import qualified Data.Set as S
 import Data.Foldable (fold, minimumBy, traverse_)
 import Data.Functor.Foldable (cata)
 import Data.Ord (comparing)
-import Data.Functor ((<&>))
+import Data.Functor ((<&>), ($>))
 import TextShow
 import Data.Word (Word8)
 
 import FaunBrick.AST hiding (Offset)
 import FaunBrick.AST.Util (replicate, single)
 import FaunBrick.AST.TH (fb)
+import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
+import FaunBrick.Interpreter (runInterpretIO)
 
 newtype Offset = Offset { getOffset :: Int }
   deriving (Show, Eq, Ord, Num, Enum)
@@ -61,7 +64,7 @@ data AlgError
   | ProtectedWrite
   deriving Show
 
-newtype AlgM a = AlgM { runAlgM :: StateT AlgState (WriterT Program (Except AlgError)) a }
+newtype AlgM a = AlgM { getAlgM :: StateT AlgState (WriterT Program (Except AlgError)) a }
   deriving ( Functor
            , Applicative
            , Monad
@@ -75,10 +78,26 @@ type AlgCtx m = (MonadWriter Program m, MonadState AlgState m, MonadError AlgErr
 emptyAlgState :: AlgState
 emptyAlgState = AlgState 0 M.empty S.empty
 
-evalAlgM :: AlgState -> AlgM a -> Either AlgError (a, AlgState, Program)
-evalAlgM s = fmap flat . runExcept . runWriterT . flip runStateT s . runAlgM
+runAlgM :: AlgState -> AlgM a -> Either AlgError (a, AlgState, Program)
+runAlgM s = fmap flat . runExcept . runWriterT . flip runStateT s . getAlgM
   where
     flat ((a, b), c) = (a, b, c)
+
+evalAlgM :: AlgState -> AlgM a -> Either AlgError Program
+evalAlgM s = fmap f . runAlgM s
+  where f (_,_,x) = x
+
+interpretAlgM :: AlgM a -> IO ()
+interpretAlgM a = case runAlgM emptyAlgState a of
+  Left e -> error $ "AlgM Error: " <> show e
+  Right (_, s, p) -> do
+    putStrLn "Program:"
+    let bf = brickFaun p
+    LT.putStrLn bf
+    putStrLn "AlgState:"
+    print s
+    putStrLn "Result:"
+    runInterpretIO NoChange Width8 p
 
 brickFaun :: Program -> LT.Text
 brickFaun = B.toLazyText . cata go
@@ -100,85 +119,122 @@ gtlt0 :: (Num a, Ord a) => a -> b -> b -> b
 gtlt0 a g l | a >= 0 = g
             | otherwise = l
 
-setEq :: AlgCtx m => Var -> Var -> m ()
+helloWorld :: AlgCtx m => m ()
+helloWorld = traverse_ outputVar =<< allocString "Hello, World!\n"
+
+allocString :: AlgCtx m => String -> m [Var]
+allocString str = withTemp $ \t10 -> do
+  replicateM_ 10 $ incVar t10
+  let (mfs, as) = unzip $ fmap (flip divMod 10 . fromEnum) str
+  ts  <- zip mfs <$> tempsN (length mfs)
+  ts' <- plusTimesN ts t10
+  forM_ (zip as ts') $ \(a, t) -> replicateM_ a (incVar t)
+  pure ts'
+
+setEq :: AlgCtx m => Var -> Var -> m Var
 setEq x y = do
   clearVar x
-  withTemp $ \t -> do
-    jumpTo y
-    copyN [x, t] y
-    jumpTo t
-    copyN [y] t
+  withTemp_ $ \t -> do
+    plusN [x, t] y
+    plusN [y] t
   modifyVarState x (\(Var t o _) -> Var t o (varValue y))
 
-setPlusEq :: AlgCtx m => Var -> Var -> m ()
+setPlusEq :: AlgCtx m => Var -> Var -> m Var
 setPlusEq x y = do
-  withTemp $ \t -> do
-    jumpTo y
-    copyN [x, t] y
-    jumpTo t
-    copyN [y] t
+  withTemp_ $ \t -> do
+    plusN [x, t] y
+    plusN [y] t
   modifyVarState x (\(Var t o v) -> Var t o (v + varValue y))
 
-setMinusEq :: AlgCtx m => Var -> Var -> m ()
+setMinusEq :: AlgCtx m => Var -> Var -> m Var
 setMinusEq x y = do
-  withTemp $ \t -> do
+  withTemp_ $ \t -> do
     jumpTo y
     loop $ decVar x *> incVar t *> decVar y
-    jumpTo t
-    copyN [y] t
+    plusN [y] t
   modifyVarState x (\(Var t o v) -> Var t o (v - varValue y))
 
-setTimesEq :: AlgCtx m => Var -> Var -> m ()
+setTimesEq :: AlgCtx m => Var -> Var -> m Var
 setTimesEq x y = do
-  withTemp $ \t0 -> do
-    withTemp $ \t1 -> do
-      jumpTo x
-      copyN [t1] x
+  withTemp_ $ \t0 ->
+    withTemp_ $ \t1 -> do
+      plusN [t1] x
       jumpTo t1
       loop $ do
-        jumpTo y
-        copyN [x, t0] y
-        jumpTo t0
-        copyN [y] t0
+        plusN [x, t0] y
+        plusN [y] t0
         decVar t1
   modifyVarState x (\(Var t o v) -> Var t o (v * varValue y))
 
-copyN :: AlgCtx m => [Var] -> Var -> m ()
-copyN xs tar = loop $ traverse_ incVar xs *> decVar tar
+-- add t to each var in xs, clearing t in the process.
+plusN :: AlgCtx m => [Var] -> Var -> m [Var]
+plusN xs tar = plusTimesN (zip (repeat 1) xs) tar
 
-incVar :: AlgCtx m => Var -> m ()
+-- takes a list of variables paired with a multiplicative factor k and sets each one to
+-- xn += k * t, clearing t in the process.
+plusTimesN :: AlgCtx m => [(Int, Var)] -> Var -> m [Var]
+plusTimesN xs t = jumpTo t *> loop go
+  where
+    go = traverse (\(i, v) -> replicateM_ i (incVar v) $> v) xs <* decVar t
+
+incVar :: AlgCtx m => Var -> m Var
 incVar var = do
   jumpTo var
   tell $ primPlus 1
   modifyVarState var (\(Var t o v) -> Var t o (v + 1))
 
-decVar :: AlgCtx m => Var -> m ()
+decVar :: AlgCtx m => Var -> m Var
 decVar var = do
   jumpTo var
   tell $ primMinus 1
   modifyVarState var (\(Var t o v) -> Var t o (v - 1))
 
-outputVar :: AlgCtx m => Var -> m ()
-outputVar v = jumpTo v *> tell primOutput
+outputVar :: AlgCtx m => Var -> m Var
+outputVar v = jumpTo v *> tell primOutput $> v
 
 jumpTo :: AlgCtx m => Var -> m ()
-jumpTo v = jumpI (varOffset v)
+jumpTo = jumpToAnyVar . Right
 
-modifyVarState :: AlgCtx m => Var -> (Var -> Var) -> m ()
+jumpToAnyVar :: AlgCtx m => AnyVar -> m ()
+jumpToAnyVar v = jumpI (anyVarOffset v)
+
+modifyVarState :: AlgCtx m => Var -> (Var -> Var) -> m Var
 modifyVarState v f = do
   whenM (not <$> varExists (Right v)) $ throwError UnknownVar
   modify (\s -> s { varMap = M.adjust (fmap f) (varOffset v) (varMap s) })
+  pure v
 
 loop :: AlgCtx m => m a -> m a
 loop = censor primLoop
 
+-- Use a temporary variable in a computation and deallocate it afterwards.
 withTemp :: AlgCtx m => (Var -> m a) -> m a
 withTemp f = do
-  o <- fresh
-  t <- intro' ("temp" <> showt (getOffset o)) 0 o
+  t <- mkTemp
+  -- TODO protect t
   r <- f t
-  delete t
+  -- TODO unprotect t
+  deleteVar t
   pure r
+
+withTemp_ :: AlgCtx m => (Var -> m a) -> m ()
+withTemp_ = void . withTemp
+
+-- Make a temporary variable.  It must be deallocated manually or with runGC
+mkTemp :: AlgCtx m => m Var
+mkTemp = do
+  o <- fresh
+  intro' ("____temp" <> showt (getOffset o)) 0 o
+
+tempsN :: AlgCtx m => Int -> m [Var]
+tempsN i = replicateM i mkTemp
+
+-- -- Delete all unprotected temp variables.  Make sure they aren't in use anymore!
+-- runGC :: AlgCtx m => m ()
+-- runGC = do
+--   m <- gets varMap
+--   p <- gets protected
+--   let ts = filter TODO
 
 intro :: AlgCtx m => Text -> Value -> m Var
 intro t v = fresh >>= intro' t v
@@ -201,10 +257,16 @@ introDyn' t o = do
   modify (\s -> s { varMap = M.insert o (Left dv) (varMap s) })
   pure dv
 
-delete :: AlgCtx m => Var -> m ()
-delete v = do
-  clearVar v
-  modify (\s -> s { varMap = M.delete (varOffset v) (varMap s) })
+deleteVar :: AlgCtx m => Var -> m ()
+deleteVar = deleteAnyVar . Right
+
+deleteDynVar :: AlgCtx m => DynVar -> m ()
+deleteDynVar = deleteAnyVar . Left
+
+deleteAnyVar :: AlgCtx m => AnyVar -> m ()
+deleteAnyVar v = do
+  clearAnyVar v
+  modify (\s -> s { varMap = M.delete (anyVarOffset v) (varMap s) })
 
 varExists :: AlgCtx m => AnyVar -> m Bool
 varExists x = gets varMap <&> (\m -> M.member (anyVarOffset x) m || x `elem` M.elems m)
@@ -240,7 +302,10 @@ jumpI i = do
   modify (\s -> s { offset = o + (i - o) })
 
 clearVar :: AlgCtx m => Var -> m ()
-clearVar v = jumpTo v *> clear
+clearVar = clearAnyVar . Right
+
+clearAnyVar :: AlgCtx m => AnyVar -> m ()
+clearAnyVar v = jumpToAnyVar v *> clear
 
 clear :: AlgCtx m => m ()
 clear = tell $ primClear
