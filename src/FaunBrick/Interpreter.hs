@@ -26,57 +26,52 @@ type InterpretM e h m =
 
 {-# INLINE interpret #-}
 interpret :: forall e h m. InterpretM e h m => EofMode -> e -> h -> Program -> m (e, h)
-interpret eofMode e'' h'' p = go e'' h'' p
+interpret eofMode mem hand prog = go prog mem hand
   where
-    {-# INLINE go #-}
-    go :: e -> h -> Program -> m (e, h)
-    go e h = \case
+    go :: Program -> e -> h -> m (e, h)
+    go p e h = case p of
       Halt      -> pure (e, h)
-      Instr i r -> step i      >>= \(e', h') -> go e' h' r
-      If bs r   -> branch bs   >>= \(e', h') -> go e' h' r
-      Loop bs r -> loop e h bs >>= \(e', h') -> go e' h' r
+      Instr i r -> step i r
+      If bs r   -> branch bs r
+      Loop bs r -> loop bs r
 
       where
-        {-# INLINE branch #-}
-        branch :: Program -> m (e, h)
-        branch bs = do
+        branch :: Program -> Program -> m (e, h)
+        branch bs r = do
           c <- readCell e 0
-          if c == 0 then pure (e, h)
-                    else go e h bs
+          if c == 0 then go r e h
+                    else go bs e h >>= \(e', h') -> go r e' h'
 
-        {-# INLINE loop #-}
-        loop :: e -> h -> Program -> m (e, h)
-        loop le lh bs = do
-          c <- readCell le 0
-          if c == 0 then pure (le, lh)
-                    else go le lh bs >>= \(e', h') -> loop e' h' bs
+        loop :: Program -> Program -> m (e, h)
+        loop bs r = do
+          c <- readCell e 0
+          if c == 0 then go r e h
+                    else go bs e h >>= \(e', h') -> go (Loop bs r) e' h'
 
-        {-# INLINE step #-}
-        step :: Instruction -> m (e, h)
-        step = \case
-          Output o        -> writeOutput e h o
-          Input o         -> readInput eofMode e h o
-          Update o n      -> (,h) <$> modifyCell e o (+ fromIntegral n)
-          Jump n          -> (,h) <$> movePointer e (+ n)
-          Set o n         -> (,h) <$> writeCell e o (fromIntegral n)
-          MulUpdate s d n -> (,h) <$> mulUpdate e s d n
-          MulSet s d n    -> (,h) <$> mulSet e s d n
+        step :: Instruction -> Program -> m (e, h)
+        step i r =
+          let a = case i of
+                Output o        -> writeOutput e h o
+                Input o         -> readInput eofMode e h o
+                Update o n      -> (,h) <$> modifyCell e o (+ fromIntegral n)
+                Jump n          -> (,h) <$> movePointer e (+ n)
+                Set o n         -> (,h) <$> writeCell e o (fromIntegral n)
+                MulUpdate s d n -> (,h) <$> mulUpdate e s d n
+                MulSet s d n    -> (,h) <$> mulSet e s d n
+          in a >>= \(e', h') -> go r e' h'
 
 mulUpdate :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
 mulUpdate e s d n = do
   c <- readCell e s
   modifyCell e d (+ (c * fromIntegral n))
-{-# INLINE mulUpdate #-}
 
 mulSet :: (Monad m, Memory e m, Integral (Cell e)) => e -> Int -> Int -> Int -> m e
 mulSet e s d n = do
   c <- readCell e s
   writeCell e d (c * fromIntegral n)
-{-# INLINE mulSet #-}
 
 writeOutput :: InterpretM e h m => e -> h -> Int -> m (e, h)
 writeOutput e h o = fmap (e,) $ readCell e o >>= output h
-{-# INLINE writeOutput #-}
 
 readInput :: InterpretM e h m => EofMode -> e -> h -> Int -> m (e, h)
 readInput eof e h o = do
@@ -87,7 +82,6 @@ readInput eof e h o = do
       NoChange -> pure (e, h1)
       Zero     -> (,h1) <$> writeCell e o 0
       MinusOne -> (,h1) <$> writeCell e o (-1)
-{-# INLINE readInput #-}
 
 newtype Pure a = Pure { runPure :: ExceptT Error Identity a }
   deriving ( Functor
@@ -124,4 +118,3 @@ runInterpretIO m b p = case b of
   Width16 -> void $ interpretIO m p (Proxy @Word16)
   Width32 -> void $ interpretIO m p (Proxy @Word32)
   Width64 -> void $ interpretIO m p (Proxy @Word64)
-{-# INLINE runInterpretIO #-}
