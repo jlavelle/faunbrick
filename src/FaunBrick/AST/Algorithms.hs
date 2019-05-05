@@ -4,38 +4,41 @@ module FaunBrick.AST.Algorithms where
 
 import Prelude hiding (replicate)
 
-import Control.Monad (when)
-import Control.Monad.State
+import Control.Monad (when, replicateM, replicateM_, void)
+import Control.Monad.State (StateT, MonadState, runStateT, gets, get, modify)
 import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor)
-import Control.Monad.Except
+import Control.Monad.Except (Except, MonadError, throwError, runExcept)
 import Data.Text (Text)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as B
 import Data.Semigroup (stimesMonoid)
+import Data.Monoid (Sum(..))
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Foldable (fold, minimumBy, traverse_)
+import Data.Foldable (fold, minimumBy, traverse_, forM_)
 import Data.Functor.Foldable (cata)
 import Data.Ord (comparing)
 import Data.Functor ((<&>), ($>))
-import TextShow
+import TextShow (showt)
 import Data.Word (Word8)
 
 import FaunBrick.AST hiding (Offset)
 import FaunBrick.AST.Util (replicate, single)
+import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.AST.TH (fb)
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
 import FaunBrick.Interpreter (runInterpretIO)
+import FaunBrick.Interpreter.Types (charToWord)
 
 newtype Offset = Offset { getOffset :: Int }
   deriving (Show, Eq, Ord, Num, Enum)
 
 newtype Value  = Value { getValue :: Word8 }
-   deriving (Show, Eq, Ord, Num)
+   deriving (Show, Eq, Ord, Num, Real, Enum, Integral)
 
 data Var = Var
   { varName   :: Text
@@ -62,6 +65,7 @@ data AlgError
   = VarAlreadyDefined
   | UnknownVar
   | ProtectedWrite
+  | InternalError String
   deriving Show
 
 newtype AlgM a = AlgM { getAlgM :: StateT AlgState (WriterT Program (Except AlgError)) a }
@@ -97,7 +101,7 @@ interpretAlgM a = case runAlgM emptyAlgState a of
     putStrLn "AlgState:"
     print s
     putStrLn "Result:"
-    runInterpretIO NoChange Width8 p
+    runInterpretIO NoChange Width8 (optimize p)
 
 brickFaun :: Program -> LT.Text
 brickFaun = B.toLazyText . cata go
@@ -123,11 +127,19 @@ helloWorld :: AlgCtx m => m ()
 helloWorld = traverse_ outputVar =<< allocString "Hello, World!\n"
 
 allocString :: AlgCtx m => String -> m [Var]
-allocString str = withTemp $ \t10 -> do
-  replicateM_ 10 $ incVar t10
-  let (mfs, as) = unzip $ fmap (flip divMod 10 . fromEnum) str
+allocString = allocList . fmap charToWord
+
+-- TODO: Find a span of contiguous memory in which to allocate the list
+allocList :: AlgCtx m => [Word8] -> m [Var]
+allocList xs = allocList' (optimalDiv $ fmap fromEnum xs) xs
+
+-- Allows you to manually pass in the divisor
+allocList' :: AlgCtx m => Int -> [Word8] -> m [Var]
+allocList' q xs = do
+  x <- mkTemp (fromIntegral q)
+  let (mfs, as) = unzip $ fmap (flip quotRem q . fromEnum) xs
   ts  <- zip mfs <$> tempsN (length mfs)
-  ts' <- plusTimesN ts t10
+  ts' <- plusTimesN ts x
   forM_ (zip as ts') $ \(a, t) -> replicateM_ a (incVar t)
   pure ts'
 
@@ -210,7 +222,7 @@ loop = censor primLoop
 -- Use a temporary variable in a computation and deallocate it afterwards.
 withTemp :: AlgCtx m => (Var -> m a) -> m a
 withTemp f = do
-  t <- mkTemp
+  t <- mkTemp 0
   -- TODO protect t
   r <- f t
   -- TODO unprotect t
@@ -221,13 +233,13 @@ withTemp_ :: AlgCtx m => (Var -> m a) -> m ()
 withTemp_ = void . withTemp
 
 -- Make a temporary variable.  It must be deallocated manually or with runGC
-mkTemp :: AlgCtx m => m Var
-mkTemp = do
+mkTemp :: AlgCtx m => Value -> m Var
+mkTemp v = do
   o <- fresh
-  intro' ("____temp" <> showt (getOffset o)) 0 o
+  intro' ("____temp" <> showt (getOffset o)) v o
 
 tempsN :: AlgCtx m => Int -> m [Var]
-tempsN i = replicateM i mkTemp
+tempsN i = replicateM i $ mkTemp 0
 
 -- -- Delete all unprotected temp variables.  Make sure they aren't in use anymore!
 -- runGC :: AlgCtx m => m ()
@@ -347,3 +359,9 @@ nextIndex m = foldr go 0 [0..]
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM p a = p >>= \r -> when r a
 
+-- Note: very partial
+optimalDiv :: Integral b => [Int] -> b
+optimalDiv xs = fromIntegral $ fst $ minimumBy (comparing snd) candidates
+  where
+    candidates = [ (a, qrSum a xs) | a <- [1..maximum xs]]
+    qrSum q ys = foldMap (Sum . uncurry (+) . flip quotRem q) ys
