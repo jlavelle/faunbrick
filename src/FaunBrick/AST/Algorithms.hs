@@ -6,7 +6,7 @@ import Prelude hiding (replicate)
 
 import Control.Monad (when, replicateM, replicateM_, void)
 import Control.Monad.State (StateT, MonadState, runStateT, gets, get, modify)
-import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor)
+import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor, listens, listen)
 import Control.Monad.Except (Except, MonadError, throwError, runExcept)
 import Data.Text (Text)
 import qualified Data.Text.Lazy as LT
@@ -63,7 +63,7 @@ data AlgState = AlgState
 
 data AlgError
   = VarAlreadyDefined
-  | UnknownVar
+  | UnknownVar AnyVar
   | ProtectedWrite
   | InternalError String
   deriving Show
@@ -124,24 +124,29 @@ gtlt0 a g l | a >= 0 = g
             | otherwise = l
 
 helloWorld :: AlgCtx m => m ()
-helloWorld = traverse_ outputVar =<< allocString "Hello, World!\n"
+helloWorld = outputString "Hello, World!\n"
 
 allocString :: AlgCtx m => String -> m [Var]
 allocString = allocList . fmap charToWord
 
--- TODO: Find a span of contiguous memory in which to allocate the list
-allocList :: AlgCtx m => [Word8] -> m [Var]
-allocList xs = allocList' (optimalDiv $ fmap fromEnum xs) xs
+outputString :: AlgCtx m => String -> m ()
+outputString = void . traverseAllocList outputVar . fmap charToWord
 
+allocList :: AlgCtx m => [Word8] -> m [Var]
+allocList = traverseAllocList pure
+
+traverseAllocList :: AlgCtx m => (Var -> m a) -> [Word8] -> m [a]
+traverseAllocList f xs = traverseAllocList' (optimalDiv $ fromEnum <$> xs) f xs
+
+-- TODO: Find a span of contiguous memory in which to allocate the list
 -- Allows you to manually pass in the divisor
-allocList' :: AlgCtx m => Int -> [Word8] -> m [Var]
-allocList' q xs = do
+traverseAllocList' :: AlgCtx m => Int -> (Var -> m a) -> [Word8] -> m [a]
+traverseAllocList' q f xs = do
   x <- mkTemp (fromIntegral q)
   let (mfs, as) = unzip $ fmap (flip quotRem q . fromEnum) xs
   ts  <- zip mfs <$> tempsN (length mfs)
   ts' <- plusTimesN ts x
-  forM_ (zip as ts') $ \(a, t) -> replicateM_ a (incVar t)
-  pure ts'
+  traverse (\(a, t) -> replicateM_ a (incVar t) *> f t)  (zip as ts')
 
 setEq :: AlgCtx m => Var -> Var -> m Var
 setEq x y = do
@@ -201,6 +206,11 @@ decVar var = do
   tell $ primMinus 1
   modifyVarState var (\(Var t o v) -> Var t o (v - 1))
 
+addToVar :: AlgCtx m => Var -> Int -> m Var
+addToVar v n | n > 0 = replicateM_ n (incVar v) $> v
+             | n < 0 = replicateM_ (abs n) (decVar v) $> v
+             | otherwise = pure v
+
 outputVar :: AlgCtx m => Var -> m Var
 outputVar v = jumpTo v *> tell primOutput $> v
 
@@ -212,7 +222,7 @@ jumpToAnyVar v = jumpI (anyVarOffset v)
 
 modifyVarState :: AlgCtx m => Var -> (Var -> Var) -> m Var
 modifyVarState v f = do
-  whenM (not <$> varExists (Right v)) $ throwError UnknownVar
+  guardUnknownVar $ Right v
   modify (\s -> s { varMap = M.adjust (fmap f) (varOffset v) (varMap s) })
   pure v
 
@@ -221,32 +231,26 @@ loop = censor primLoop
 
 -- Use a temporary variable in a computation and deallocate it afterwards.
 withTemp :: AlgCtx m => (Var -> m a) -> m a
-withTemp f = do
-  t <- mkTemp 0
-  -- TODO protect t
+withTemp = withTempVal 0
+
+withTempVal :: AlgCtx m => Value -> (Var -> m a) -> m a
+withTempVal v f = do
+  t <- mkTemp v
   r <- f t
-  -- TODO unprotect t
   deleteVar t
   pure r
 
 withTemp_ :: AlgCtx m => (Var -> m a) -> m ()
 withTemp_ = void . withTemp
 
--- Make a temporary variable.  It must be deallocated manually or with runGC
+-- Make a temporary variable.  It must be deallocated manually.
 mkTemp :: AlgCtx m => Value -> m Var
 mkTemp v = do
   o <- fresh
   intro' ("____temp" <> showt (getOffset o)) v o
 
 tempsN :: AlgCtx m => Int -> m [Var]
-tempsN i = replicateM i $ mkTemp 0
-
--- -- Delete all unprotected temp variables.  Make sure they aren't in use anymore!
--- runGC :: AlgCtx m => m ()
--- runGC = do
---   m <- gets varMap
---   p <- gets protected
---   let ts = filter TODO
+tempsN i = replicateM i $ (mkTemp 0 >>= clearVar)
 
 intro :: AlgCtx m => Text -> Value -> m Var
 intro t v = fresh >>= intro' t v
@@ -254,7 +258,7 @@ intro t v = fresh >>= intro' t v
 intro' :: AlgCtx m => Text -> Value -> Offset -> m Var
 intro' t v o = do
   let var = Var t o v
-  whenM (varExists (Right var)) $ throwError VarAlreadyDefined
+  whenM (varExists $ Right var) $ throwError VarAlreadyDefined
   modify (\s -> s { varMap = M.insert o (Right var) (varMap s) })
   when (v /= 0) $ setVal var
   pure var
@@ -277,35 +281,57 @@ deleteDynVar = deleteAnyVar . Left
 
 deleteAnyVar :: AlgCtx m => AnyVar -> m ()
 deleteAnyVar v = do
-  clearAnyVar v
+  _ <- clearAnyVar v
   modify (\s -> s { varMap = M.delete (anyVarOffset v) (varMap s) })
 
 varExists :: AlgCtx m => AnyVar -> m Bool
 varExists x = gets varMap <&> (\m -> M.member (anyVarOffset x) m || x `elem` M.elems m)
 
+guardUnknownVar :: AlgCtx m => AnyVar -> m ()
+guardUnknownVar x = whenM (not <$> varExists x) $ throwError $ UnknownVar x
+
 anyVarOffset :: AnyVar -> Offset
 anyVarOffset = either dynVarOffset varOffset
 
 setVal :: AlgCtx m => Var -> m ()
-setVal x = do
-  st <- get
-  let p = snd $ minimumBy (comparing fst) $ setValCosts x st
-  tell p
+setVal var@(Var _ _ v)
+  | v < 15   = void $ addToVar var (fromIntegral v) *> jumpTo var
+  | v >= 221 = void $ addToVar var (fromIntegral v - 256) *> jumpTo var
+  | otherwise =
+      let (f1, f2, r) = mulAddFactors v
+      in void $ basicMulAdd var f1 f2 *> addToVar var r *> jumpTo var
 
--- TODO: Use some heuristic to find more optimal ways to set the value
-setValCosts :: Var -> AlgState -> [(Int, Program)]
-setValCosts (Var _ _ v) _ =
-  dirPlus : dirMinus : fold []
+-- adds a * b to the provided offset
+basicMulAdd :: AlgCtx m => Var -> Int -> Int -> m ()
+basicMulAdd v@(Var _ o _) a b = withTempVal (fromIntegral a) $ \x -> do
+  loop $ do
+    addToVar v b
+    decVar x
+  pure ()
+
+mulAddFactors :: Value -> (Int, Int, Int)
+mulAddFactors n =
+  let n' = round (fromIntegral n / 5) * 5
+      r  = fromIntegral n - n'
+      fs = go (n', 2)
+      (f1, f2) = (product $ init fs, last fs)
+  in (max f1 f2, min f1 f2, r)
   where
-    dirPlus  = let p = primPlus v in (length p, p)
-    dirMinus = let p = primMinus (255 - v) in (length p, p)
+    go (a, b) = case quotRem a b of
+      (x, y) | y == 0    -> b : go (x, b)
+             | x == 0    -> []
+             | otherwise -> go (a, b + 1)
 
--- find the next unallocated cell, clear it, and return its index
+-- Jump to the next unallocated cell, clear it, and return its offset
 fresh :: AlgCtx m => m Offset
 fresh = do
-  m <- gets (nextIndex . varMap)
+  m <- basicFresh
   jumpI m *> clear
   pure m
+
+-- Find the next unallocated cell in the VarMap
+basicFresh :: AlgCtx m => m Offset
+basicFresh = gets (nextIndex . varMap)
 
 jumpI :: AlgCtx m => Offset -> m ()
 jumpI i = do
@@ -313,11 +339,13 @@ jumpI i = do
   tell $ primJump (i - o)
   modify (\s -> s { offset = o + (i - o) })
 
-clearVar :: AlgCtx m => Var -> m ()
-clearVar = clearAnyVar . Right
+clearVar :: AlgCtx m => Var -> m Var
+clearVar v = do
+  _ <- clearAnyVar $ Right v
+  modifyVarState v (\(Var t o _) -> Var t o 0)
 
-clearAnyVar :: AlgCtx m => AnyVar -> m ()
-clearAnyVar v = jumpToAnyVar v *> clear
+clearAnyVar :: AlgCtx m => AnyVar -> m AnyVar
+clearAnyVar v = jumpToAnyVar v *> clear $> v
 
 clear :: AlgCtx m => m ()
 clear = tell $ primClear
@@ -350,6 +378,10 @@ primMoveByR = [fb| [[>+<-]>-] |]
 -- Similar to primMoveByR, but moves to the left instead.
 primMoveByL :: Program
 primMoveByL = [fb| [[<+>-]<-] |]
+
+-- allocates all available input into adjacent cells
+primConsumeInput :: Program
+primConsumeInput = [fb| ,[>,] |]
 
 nextIndex ::  Map Offset a -> Offset
 nextIndex m = foldr go 0 [0..]
