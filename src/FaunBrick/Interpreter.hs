@@ -11,6 +11,7 @@ import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
 import FaunBrick.Interpreter.Types
 import qualified FaunBrick.Interpreter.Util as Util
+import qualified FaunBrick.Interpreter.IO as IO
 
 type InterpretM e h m =
   (Monad m, Memory e m, Handle h m, Integral (Out h), Integral (Cell e), Cell e ~ Out h)
@@ -105,7 +106,9 @@ interpretIO em p _ = Util.defaultMVecMem >>= \m -> interpret em m Util.defaultIO
 
 runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
 runInterpretIO m b p = case b of
-  Width8  -> void $ interpretIO m p (Proxy @Word8)
+  Width8  -> do
+    (MVecMem v _) <- Util.defaultMVecMem
+    IO.interpret m v Util.defaultIOHandle p
   Width16 -> void $ interpretIO m p (Proxy @Word16)
   Width32 -> void $ interpretIO m p (Proxy @Word32)
   Width64 -> void $ interpretIO m p (Proxy @Word64)
