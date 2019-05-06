@@ -5,31 +5,31 @@ module FaunBrick.AST.Algorithms where
 import Prelude hiding (replicate)
 
 import Control.Monad (when, replicateM, replicateM_, void)
-import Control.Monad.State (StateT, MonadState, runStateT, gets, get, modify)
-import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor, listens, listen)
 import Control.Monad.Except (Except, MonadError, throwError, runExcept)
-import Data.Text (Text)
-import qualified Data.Text.Lazy as LT
-import qualified Data.Text.Lazy.IO as LT
-import Data.Text.Lazy.Builder (Builder)
-import qualified Data.Text.Lazy.Builder as B
-import Data.Semigroup (stimesMonoid)
-import Data.Monoid (Sum(..))
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Set (Set)
-import qualified Data.Set as S
-import Data.Foldable (fold, minimumBy, traverse_, forM_)
-import Data.Functor.Foldable (cata)
-import Data.Ord (comparing)
+import Control.Monad.State (StateT, MonadState, runStateT, gets, modify)
+import Control.Monad.Writer (WriterT, MonadWriter, tell, runWriterT, censor)
+import Data.Foldable (minimumBy)
 import Data.Functor ((<&>), ($>))
-import TextShow (showt)
+import Data.Functor.Foldable (cata)
+import Data.Map (Map)
+import Data.Monoid (Sum(..))
+import Data.Ord (comparing)
+import Data.Semigroup (stimesMonoid)
+import Data.Set (Set)
+import Data.Text (Text)
+import Data.Text.Lazy.Builder (Builder)
 import Data.Word (Word8)
+import TextShow (showt)
+import qualified Data.Map as M
+import qualified Data.Set as S
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as B
+import qualified Data.Text.Lazy.IO as LT
 
 import FaunBrick.AST hiding (Offset)
-import FaunBrick.AST.Util (replicate, single)
 import FaunBrick.AST.Optimize (optimize)
 import FaunBrick.AST.TH (fb)
+import FaunBrick.AST.Util (replicate, single)
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
 import FaunBrick.Interpreter (runInterpretIO)
 import FaunBrick.Interpreter.Types (charToWord)
@@ -79,6 +79,15 @@ newtype AlgM a = AlgM { getAlgM :: StateT AlgState (WriterT Program (Except AlgE
 
 type AlgCtx m = (MonadWriter Program m, MonadState AlgState m, MonadError AlgError m)
 
+anyVarOffset :: AnyVar -> Offset
+anyVarOffset = either dynVarOffset varOffset
+
+varExists :: AlgCtx m => AnyVar -> m Bool
+varExists x = gets varMap <&> (\m -> M.member (anyVarOffset x) m || x `elem` M.elems m)
+
+guardUnknownVar :: AlgCtx m => AnyVar -> m ()
+guardUnknownVar x = whenM (not <$> varExists x) $ throwError $ UnknownVar x
+
 emptyAlgState :: AlgState
 emptyAlgState = AlgState 0 M.empty S.empty
 
@@ -123,9 +132,6 @@ gtlt0 :: (Num a, Ord a) => a -> b -> b -> b
 gtlt0 a g l | a >= 0 = g
             | otherwise = l
 
-helloWorld :: AlgCtx m => m ()
-helloWorld = outputString "Hello, World!\n"
-
 allocString :: AlgCtx m => String -> m [Var]
 allocString = allocList . fmap charToWord
 
@@ -152,14 +158,14 @@ setEq :: AlgCtx m => Var -> Var -> m Var
 setEq x y = do
   clearVar x
   withTemp_ $ \t -> do
-    plusN [x, t] y
+    _ <- plusN [x, t] y
     plusN [y] t
   modifyVarState x (\(Var t o _) -> Var t o (varValue y))
 
 setPlusEq :: AlgCtx m => Var -> Var -> m Var
 setPlusEq x y = do
   withTemp_ $ \t -> do
-    plusN [x, t] y
+    _ <- plusN [x, t] y
     plusN [y] t
   modifyVarState x (\(Var t o v) -> Var t o (v + varValue y))
 
@@ -185,7 +191,7 @@ setTimesEq x y = do
 
 -- add t to each var in xs, clearing t in the process.
 plusN :: AlgCtx m => [Var] -> Var -> m [Var]
-plusN xs tar = plusTimesN (zip (repeat 1) xs) tar
+plusN xs = plusTimesN $ zip (repeat 1) xs
 
 -- takes a list of variables paired with a multiplicative factor k and sets each one to
 -- xn += k * t, clearing t in the process.
@@ -193,6 +199,35 @@ plusTimesN :: AlgCtx m => [(Int, Var)] -> Var -> m [Var]
 plusTimesN xs t = jumpTo t *> loop go
   where
     go = traverse (\(i, v) -> replicateM_ i (incVar v) $> v) xs <* decVar t
+
+setVal :: AlgCtx m => Var -> m ()
+setVal var@(Var _ _ v)
+  | v < 15   = void $ addToVar var (fromIntegral v) *> jumpTo var
+  | v >= 221 = void $ addToVar var (fromIntegral v - 256) *> jumpTo var
+  | otherwise =
+      let (f1, f2, r) = mulAddFactors v
+      in void $ basicMulAdd var f1 f2 *> addToVar var r *> jumpTo var
+
+-- adds a * b to the provided var
+basicMulAdd :: AlgCtx m => Var -> Int -> Int -> m ()
+basicMulAdd v a b = withTempVal (fromIntegral a) $ \x -> do
+  loop $ do
+    _ <- addToVar v b
+    decVar x
+  pure ()
+
+mulAddFactors :: Value -> (Int, Int, Int)
+mulAddFactors n =
+  let n' = round (fromIntegral n / (5 :: Double)) * 5
+      r  = fromIntegral n - n'
+      fs = go (n', 2)
+      (f1, f2) = (product $ init fs, last fs)
+  in (max f1 f2, min f1 f2, r)
+  where
+    go (a, b) = case quotRem a b of
+      (x, y) | y == 0    -> b : go (x, b)
+             | x == 0    -> []
+             | otherwise -> go (a, b + 1)
 
 incVar :: AlgCtx m => Var -> m Var
 incVar var = do
@@ -214,20 +249,11 @@ addToVar v n | n > 0 = replicateM_ n (incVar v) $> v
 outputVar :: AlgCtx m => Var -> m Var
 outputVar v = jumpTo v *> tell primOutput $> v
 
-jumpTo :: AlgCtx m => Var -> m ()
-jumpTo = jumpToAnyVar . Right
-
-jumpToAnyVar :: AlgCtx m => AnyVar -> m ()
-jumpToAnyVar v = jumpI (anyVarOffset v)
-
 modifyVarState :: AlgCtx m => Var -> (Var -> Var) -> m Var
 modifyVarState v f = do
   guardUnknownVar $ Right v
   modify (\s -> s { varMap = M.adjust (fmap f) (varOffset v) (varMap s) })
   pure v
-
-loop :: AlgCtx m => m a -> m a
-loop = censor primLoop
 
 -- Use a temporary variable in a computation and deallocate it afterwards.
 withTemp :: AlgCtx m => (Var -> m a) -> m a
@@ -250,7 +276,7 @@ mkTemp v = do
   intro' ("____temp" <> showt (getOffset o)) v o
 
 tempsN :: AlgCtx m => Int -> m [Var]
-tempsN i = replicateM i $ (mkTemp 0 >>= clearVar)
+tempsN i = replicateM i $ mkTemp 0 >>= clearVar
 
 intro :: AlgCtx m => Text -> Value -> m Var
 intro t v = fresh >>= intro' t v
@@ -284,44 +310,6 @@ deleteAnyVar v = do
   _ <- clearAnyVar v
   modify (\s -> s { varMap = M.delete (anyVarOffset v) (varMap s) })
 
-varExists :: AlgCtx m => AnyVar -> m Bool
-varExists x = gets varMap <&> (\m -> M.member (anyVarOffset x) m || x `elem` M.elems m)
-
-guardUnknownVar :: AlgCtx m => AnyVar -> m ()
-guardUnknownVar x = whenM (not <$> varExists x) $ throwError $ UnknownVar x
-
-anyVarOffset :: AnyVar -> Offset
-anyVarOffset = either dynVarOffset varOffset
-
-setVal :: AlgCtx m => Var -> m ()
-setVal var@(Var _ _ v)
-  | v < 15   = void $ addToVar var (fromIntegral v) *> jumpTo var
-  | v >= 221 = void $ addToVar var (fromIntegral v - 256) *> jumpTo var
-  | otherwise =
-      let (f1, f2, r) = mulAddFactors v
-      in void $ basicMulAdd var f1 f2 *> addToVar var r *> jumpTo var
-
--- adds a * b to the provided offset
-basicMulAdd :: AlgCtx m => Var -> Int -> Int -> m ()
-basicMulAdd v@(Var _ o _) a b = withTempVal (fromIntegral a) $ \x -> do
-  loop $ do
-    addToVar v b
-    decVar x
-  pure ()
-
-mulAddFactors :: Value -> (Int, Int, Int)
-mulAddFactors n =
-  let n' = round (fromIntegral n / 5) * 5
-      r  = fromIntegral n - n'
-      fs = go (n', 2)
-      (f1, f2) = (product $ init fs, last fs)
-  in (max f1 f2, min f1 f2, r)
-  where
-    go (a, b) = case quotRem a b of
-      (x, y) | y == 0    -> b : go (x, b)
-             | x == 0    -> []
-             | otherwise -> go (a, b + 1)
-
 -- Jump to the next unallocated cell, clear it, and return its offset
 fresh :: AlgCtx m => m Offset
 fresh = do
@@ -332,6 +320,12 @@ fresh = do
 -- Find the next unallocated cell in the VarMap
 basicFresh :: AlgCtx m => m Offset
 basicFresh = gets (nextIndex . varMap)
+
+jumpTo :: AlgCtx m => Var -> m ()
+jumpTo = jumpToAnyVar . Right
+
+jumpToAnyVar :: AlgCtx m => AnyVar -> m ()
+jumpToAnyVar v = jumpI (anyVarOffset v)
 
 jumpI :: AlgCtx m => Offset -> m ()
 jumpI i = do
@@ -348,7 +342,10 @@ clearAnyVar :: AlgCtx m => AnyVar -> m AnyVar
 clearAnyVar v = jumpToAnyVar v *> clear $> v
 
 clear :: AlgCtx m => m ()
-clear = tell $ primClear
+clear = tell primClear
+
+loop :: AlgCtx m => m a -> m a
+loop = censor primLoop
 
 primPlus :: Value -> Program
 primPlus v = replicate v (Update 0 1)
@@ -396,4 +393,4 @@ optimalDiv :: Integral b => [Int] -> b
 optimalDiv xs = fromIntegral $ fst $ minimumBy (comparing snd) candidates
   where
     candidates = [ (a, qrSum a xs) | a <- [1..maximum xs]]
-    qrSum q ys = foldMap (Sum . uncurry (+) . flip quotRem q) ys
+    qrSum q = foldMap $ Sum . uncurry (+) . flip quotRem q
