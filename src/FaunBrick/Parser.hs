@@ -1,12 +1,12 @@
 module FaunBrick.Parser (parseFaunBrick, parseFile, parseFile') where
 
+import Control.Applicative ((<|>))
 import Data.Attoparsec.Text.Lazy
-import Data.Functor (($>))
 import Data.Foldable (asum, fold)
+import Data.Functor (($>))
+import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
-import Data.Text.Lazy (Text)
-import Control.Applicative ((<|>))
 
 import FaunBrick.AST (FaunBrick(..), Instruction(..), Program)
 import FaunBrick.AST.Util (single)

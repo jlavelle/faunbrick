@@ -1,9 +1,9 @@
 module FaunBrick.Interpreter.Util where
 
-import qualified Data.Vector.Generic.Mutable as MV
-import qualified Data.IntMap.Strict as M
 import Data.Primitive.Types (Prim)
 import System.IO (stdout, stdin)
+import qualified Data.IntMap.Strict as M
+import qualified Data.Vector.Generic.Mutable as MV
 
 import FaunBrick.Interpreter.Types
 

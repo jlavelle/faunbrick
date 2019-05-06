@@ -4,22 +4,13 @@ import Control.Monad (void)
 import Control.Monad.Except (MonadError, runExceptT, ExceptT)
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Primitive.Types (Prim)
-import Data.Word (Word8, Word16, Word32, Word64)
 import Data.Proxy (Proxy(..))
+import Data.Word (Word8, Word16, Word32, Word64)
 
-import FaunBrick.Interpreter.Types (
-  Memory(..),
-  Handle(..),
-  Packable,
-  TextHandle,
-  Tape,
-  Error,
-  IOHandle,
-  MVecMem,
-  )
-import qualified FaunBrick.Interpreter.Util as Util
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
+import FaunBrick.Interpreter.Types
+import qualified FaunBrick.Interpreter.Util as Util
 
 type InterpretM e h m =
   (Monad m, Memory e m, Handle h m, Integral (Out h), Integral (Cell e), Cell e ~ Out h)

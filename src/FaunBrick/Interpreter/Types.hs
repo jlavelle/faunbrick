@@ -2,19 +2,19 @@ module FaunBrick.Interpreter.Types where
 
 import Control.Monad.Except (MonadError(..), liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Vector.Primitive.Mutable (IOVector)
-import Data.Primitive.Types (Prim)
-import qualified Data.Vector.Generic.Mutable as MV
-import qualified GHC.IO.Handle as GHC
-import Data.Word (Word8, Word16, Word32, Word64)
-import qualified Data.Text.Lazy as LT
-import Data.Functor (($>))
-import Data.Maybe (maybe)
 import Data.ByteString.Internal (c2w, w2c)
+import Data.Functor (($>))
 import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as M
+import Data.Maybe (maybe)
+import Data.Primitive.Types (Prim)
+import Data.Vector.Primitive.Mutable (IOVector)
+import Data.Word (Word8, Word16, Word32, Word64)
 import System.IO.Error (isEOFError, catchIOError)
 import qualified Data.ByteString.Builder as BS
+import qualified Data.IntMap.Strict as M
+import qualified Data.Text.Lazy as LT
+import qualified Data.Vector.Generic.Mutable as MV
+import qualified GHC.IO.Handle as GHC
 
 data Error = OutOfBounds deriving Show
 

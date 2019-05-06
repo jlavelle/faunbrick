@@ -2,13 +2,13 @@
 
 module FaunBrick.Compiler.Language where
 
+import Data.Foldable (fold)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy as LT
-import qualified Data.Text.Lazy.IO as LT
 import qualified Data.Text.Lazy.Builder as B
-import Data.Foldable (fold)
-import Data.Maybe (fromMaybe)
+import qualified Data.Text.Lazy.IO as LT
 
 import FaunBrick.AST (Program, Instruction(..), FaunBrick(..))
 import FaunBrick.Common.Types (EofMode(..))

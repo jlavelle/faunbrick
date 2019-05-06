@@ -1,20 +1,20 @@
 module Main where
 
 import Criterion.Main
-import qualified Data.Text.Lazy.IO as LT
+import Data.ByteString.Lazy (ByteString)
 import Data.Functor ((<&>))
 import Data.Text.Lazy (Text)
-import Data.ByteString.Lazy (ByteString)
-import qualified Data.ByteString.Builder as BS
 import Data.Word (Word8)
+import qualified Data.ByteString.Builder as BS
+import qualified Data.Text.Lazy.IO as LT
 
 import FaunBrick.AST (Program)
 import FaunBrick.AST.Optimize (optimize)
-import FaunBrick.Parser (parseFaunBrick, parseFile')
+import FaunBrick.Common.Types (EofMode(..))
 import FaunBrick.Interpreter (interpretPure', interpret)
 import FaunBrick.Interpreter.Types (TextHandle(..), Error)
-import FaunBrick.Common.Types (EofMode(..))
 import FaunBrick.Interpreter.Util (defaultTextHandle, defaultMVecMem, defaultIntMapMem)
+import FaunBrick.Parser (parseFaunBrick, parseFile')
 
 main :: IO ()
 main = defaultMain

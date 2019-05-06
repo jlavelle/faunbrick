@@ -3,12 +3,11 @@
 
 module FaunBrick.AST where
 
+import Control.DeepSeq (NFData, NFData1)
 import Data.Data (Data)
+import Data.Functor.Foldable.TH (makeBaseFunctor)
 import GHC.Exts (IsList(..))
 import GHC.Generics (Generic, Generic1)
-import Control.DeepSeq (NFData, NFData1)
-
-import Data.Functor.Foldable.TH (makeBaseFunctor)
 
 data FaunBrick a
   = Instr a (FaunBrick a)

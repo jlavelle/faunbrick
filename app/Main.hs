@@ -2,19 +2,19 @@
 
 module Main where
 
-import qualified Options.Applicative as Opts
-import Options.Applicative (Parser, ParserInfo)
 import Control.Applicative (optional, (<|>))
 import Data.Text.Lazy (Text)
+import Options.Applicative (Parser, ParserInfo)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
+import qualified Options.Applicative as Opts
 
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..))
-import qualified FaunBrick.Interpreter as Interpreter
 import qualified FaunBrick.AST.Optimize as AST
-import qualified FaunBrick.Parser as Parser
-import qualified FaunBrick.Compiler.JS
 import qualified FaunBrick.Compiler.C
+import qualified FaunBrick.Compiler.JS
+import qualified FaunBrick.Interpreter as Interpreter
+import qualified FaunBrick.Parser as Parser
 
 data Options = Options
   { mode     :: Mode

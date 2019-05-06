@@ -2,16 +2,17 @@ module FaunBrick.AST.Optimize where
 
 import Prelude hiding (last)
 
-import Data.Maybe (maybe)
-import Data.Functor.Foldable (cata, embed, histo, Corecursive, Base)
-import Control.Comonad.Cofree (Cofree(..))
 import Control.Comonad (extract)
+import Control.Comonad.Cofree (Cofree(..))
 import Control.Monad ((>=>))
+import Data.Functor.Foldable (cata, embed, histo, Corecursive, Base)
 import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as Map
 import Data.IntSet (IntSet)
+import Data.Maybe (maybe)
+import qualified Data.IntMap.Strict as Map
 import qualified Data.IntSet as Set
 
+import FaunBrick.AST
 import FaunBrick.AST.Util (
   single,
   instrSum,
@@ -24,7 +25,6 @@ import FaunBrick.AST.Util (
   cataBlocks,
   srcOffset
   )
-import FaunBrick.AST
 
 type Optimization = Program -> Program
 

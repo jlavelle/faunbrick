@@ -2,11 +2,11 @@ module FaunBrick.AST.Util where
 
 import Prelude hiding (replicate)
 
-import Data.Data (toConstr)
-import Data.Monoid (Sum(..))
-import Data.Functor.Foldable (cata)
 import Control.Applicative ((<|>))
 import Control.Monad ((>=>))
+import Data.Data (toConstr)
+import Data.Functor.Foldable (cata)
+import Data.Monoid (Sum(..))
 
 import FaunBrick.AST
 

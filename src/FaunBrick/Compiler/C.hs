@@ -3,14 +3,14 @@
 module FaunBrick.Compiler.C where
 
 import Data.Text (Text)
+import TextShow (showt)
 import qualified Data.Text.Lazy as LT
-import TextShow
 
-import FaunBrick.Compiler.Language hiding (compile)
-import qualified FaunBrick.Compiler.Language as Language
-import FaunBrick.Compiler.Language.Imperative
-import FaunBrick.Common.Types (EofMode(..))
 import FaunBrick.AST (Program)
+import FaunBrick.Common.Types (EofMode(..))
+import FaunBrick.Compiler.Language hiding (compile)
+import FaunBrick.Compiler.Language.Imperative
+import qualified FaunBrick.Compiler.Language as Language
 
 compile :: EofMode -> Program -> LT.Text
 compile m = Language.compile cLang (cOpts m)
