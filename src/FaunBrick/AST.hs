@@ -60,13 +60,13 @@ type Source = Offset
 type Dest = Offset
 
 data Instruction
-  = Output Offset             -- output(m[p + offset])
-  | Input Offset              -- input(m, p + offset)
-  | Update Offset Int         -- m[p + offset] += v
-  | Jump Int                  -- p += v
-  | Set Offset Int            -- m[p + offset] = v
-  | MulUpdate Source Dest Int -- m[p + dest] += m[p + source] * v
-  | MulSet Source Dest Int    -- m[p + dest]  = m[p + source] * v
+  = Output !Offset               -- output(m[p + offset])
+  | Input !Offset                -- input(m, p + offset)
+  | Update !Offset !Int          -- m[p + offset] += v
+  | Jump !Int                    -- p += v
+  | Set !Offset !Int             -- m[p + offset] = v
+  | MulUpdate !Source !Dest !Int -- m[p + dest] += m[p + source] * v
+  | MulSet !Source !Dest !Int    -- m[p + dest]  = m[p + source] * v
   deriving (Eq, Show, Generic, Data)
 
 instance NFData Instruction
