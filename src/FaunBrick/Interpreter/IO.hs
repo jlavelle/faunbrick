@@ -5,6 +5,8 @@ import Data.Vector.Primitive.Mutable (IOVector)
 import Data.Word (Word8)
 import System.IO (hGetChar, hPutChar)
 import System.IO.Error (isEOFError, catchIOError)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as BS
 import qualified Data.Vector.Generic.Mutable as MV
 
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
@@ -37,11 +39,11 @@ interpret eofMode mem (IOHandle inp out) prog = void $ go prog 1000
     step :: Int -> Instruction -> Program -> IO Int
     step x i r = case i of
       Output o -> do
-        c <- wordToChar <$> MV.unsafeRead mem (x + o)
-        hPutChar out c
+        c <- MV.unsafeRead mem (x + o)
+        BS.hPutBuilder out (BS.word8 c)
         go r x
       Input o -> do
-        c <- catchIOError (charToWord <$> hGetChar inp) $ \e -> do
+        c <- catchIOError (flip BS.index 0 <$> BS.hGet inp 1) $ \e -> do
           if not $ isEOFError e then ioError e else case eofMode of
             NoChange -> MV.unsafeRead mem (x + o)
             MinusOne -> pure 255
@@ -49,7 +51,7 @@ interpret eofMode mem (IOHandle inp out) prog = void $ go prog 1000
         MV.unsafeWrite mem (x + o) c
         go r x
       Update o n -> do
-        MV.modify mem (\y -> y + fromIntegral n) (x + o)
+        MV.unsafeModify mem (\y -> y + fromIntegral n) (x + o)
         go r x
       Jump n -> go r (x + n)
       Set o n -> do
@@ -57,7 +59,7 @@ interpret eofMode mem (IOHandle inp out) prog = void $ go prog 1000
         go r x
       MulUpdate s d n -> do
         c <- MV.unsafeRead mem (x + s)
-        MV.modify mem (\y -> y + (c * fromIntegral n)) (x + d)
+        MV.unsafeModify mem (\y -> y + (c * fromIntegral n)) (x + d)
         go r x
       MulSet s d n -> do
         c <- MV.unsafeRead mem (x + s)
