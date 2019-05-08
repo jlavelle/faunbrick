@@ -2,3 +2,4 @@
 faunbrick.cabal
 *~
 output/
+*.prof
