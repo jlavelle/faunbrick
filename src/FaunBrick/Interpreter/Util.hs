@@ -1,28 +1,24 @@
 module FaunBrick.Interpreter.Util where
 
 import Data.Primitive.Types (Prim)
+import Data.Vector.Primitive.Mutable (IOVector)
 import System.IO (stdout, stdin)
-import qualified Data.IntMap.Strict as M
 import qualified Data.Vector.Generic.Mutable as MV
 
-import FaunBrick.Interpreter.Types
+import FaunBrick.Interpreter.IO (IOHandle(..))
+import FaunBrick.Interpreter.Pure (TextHandle(..), Tape(..))
 
-defaultIntMapMem :: IntMapMem a
-defaultIntMapMem = IntMapMem M.empty 0
-
-defaultMVecMem :: (Num a, Prim a) => IO (MVecMem a)
-defaultMVecMem = do
-  v <- MV.replicate 31000 0
-  pure $ MVecMem v 1000
-
-defaultTape :: Num a => Tape a
-defaultTape = Tape (replicate 1000 0) 0 $ replicate 29999 0
-
-defaultTextHandle :: TextHandle a
-defaultTextHandle = TextHandle mempty mempty
+defaultIOVector :: (Num a, Prim a) => IO (IOVector a)
+defaultIOVector = MV.replicate 31000 0
 
 defaultIOHandle :: IOHandle a
 defaultIOHandle = IOHandle
   { ioHandleIn  = stdin
   , ioHandleOut = stdout
   }
+
+defaultTape :: Num a => Tape (Int, a)
+defaultTape = Tape (zip [0..] $ replicate 1000 0) (999, 0) (zip [1000..] $ replicate 29999 0)
+
+defaultTextHandle :: TextHandle a
+defaultTextHandle = TextHandle mempty mempty

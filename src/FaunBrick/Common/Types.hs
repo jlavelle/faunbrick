@@ -12,3 +12,5 @@ data BitWidth
   | Width32
   | Width64
   deriving Show
+
+data Error = OutOfBounds deriving Show
