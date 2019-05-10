@@ -6,6 +6,7 @@ import Data.Word (Word8, Word16, Word32, Word64)
 
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
 import FaunBrick.Common.Types (EofMode(..), BitWidth(..), Error(..))
+import FaunBrick.Interpreter.Pure (Tape, TextHandle)
 import FaunBrick.Interpreter.Types
 import qualified FaunBrick.Interpreter.Util as Util
 
@@ -133,6 +134,15 @@ interpretIO :: forall a. (Integral a, Packable a, Prim a)
             -> IO ()
 interpretIO m p = Util.defaultIOVector @a >>= \v -> interpretM m v Util.defaultIOHandle p 1000
 {-# INLINE interpretIO #-}
+
+interpretPure :: forall a. (Integral a, Packable a)
+              => EofMode
+              -> Program
+              -> Either Error (Tape a, TextHandle a)
+interpretPure m p = do
+  (e, h, _) <- interpretP m Util.defaultTape Util.defaultTextHandle p 999
+  pure (snd <$> e, h)
+{-# INLINE interpretPure #-}
 
 runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
 runInterpretIO m b p = case b of

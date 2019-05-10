@@ -18,16 +18,16 @@ instance Packable a => PureHandle (TextHandle a) a where
     Just (a, r) -> (Just $ fromChar a, TextHandle r o)
     Nothing -> (Nothing, h)
 
-data Tape a = Tape [a] a [a] deriving Show
+data Tape a = Tape [a] a [a] deriving (Functor, Show)
 
 -- TODO: Look at more efficient ways to handle Tape movement
 instance PureMemory (Tape (Int, a)) a where
-  readCellP t i = snd . readFocus <$> diffMove t (+ i)
+  readCellP t i = snd . readFocus <$> moveTo t i
   writeCellP t i a = tapeMod t i (const a)
   modifyCellP = tapeMod
 
 tapeMod :: Tape (Int, a) -> Int -> (a -> a) -> Either Error (Tape (Int, a))
-tapeMod t o f = diffMove t (+ o) <&> modifyFocus (\(n, x) -> (n, f x))
+tapeMod t o f = moveTo t o <&> modifyFocus (\(n, x) -> (n, f x))
 
 readFocus :: Tape a -> a
 readFocus (Tape _ a _) = a
@@ -45,11 +45,10 @@ rightN n (Tape ls f (r:rs)) = rightN (n - 1) (Tape (f:ls) r rs)
 modifyFocus :: (a -> a) -> Tape a -> Tape a
 modifyFocus f (Tape ls a rs) = Tape ls (f a) rs
 
-diffMove :: Tape (Int, a) -> (Int -> Int) -> Either Error (Tape (Int, a))
-diffMove t f =
-  let x = fst $ readFocus t
-      y = f x
-  in case compare y x of
-    GT -> rightN (y - x) t
-    LT -> leftN (x - y) t
+moveTo :: Tape (Int, a) -> Int -> Either Error (Tape (Int, a))
+moveTo t i =
+  let cur = fst $ readFocus t
+  in case compare cur i of
+    GT -> leftN (cur - i) t
+    LT -> rightN (i - cur) t
     _  -> Right t
