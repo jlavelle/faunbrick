@@ -29,6 +29,7 @@ dependencies:
 - text-show
 - template-haskell
 - tagged
+- streaming
 
 ghc-options:
 - -Wall
