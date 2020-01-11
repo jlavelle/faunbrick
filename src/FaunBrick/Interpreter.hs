@@ -2,7 +2,16 @@ module FaunBrick.Interpreter where
 
 import Prelude hiding (read)
 
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import Data.Profunctor (Profunctor(..))
+import Data.Word (Word8)
+import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Unboxed.Mutable as MV
+import System.IO (stdin)
+
 import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
+import FaunBrick.Common.Types (BitWidth(..), EofMode(..))
 
 data MachineF i o r
   = Continue r
@@ -14,6 +23,13 @@ data Machine i o
   = Await (i -> Machine i o)
   | Yield o (Machine i o)
   | Done
+  deriving Functor
+
+instance Profunctor Machine where
+  dimap f g = \case
+    Await f'  -> Await $ dimap f g . f' . f
+    Yield o m -> Yield (g o) $ dimap f g m
+    Done      -> Done
 
 data State a = State
   { _pointer :: !Int
@@ -21,9 +37,9 @@ data State a = State
   , _program :: !Program
   }
 
-data Memory a i o = Memory
-  { _read  :: a -> Int -> o
-  , _write :: a -> Int -> i -> a
+data Memory f a = Memory
+  { _read  :: f a -> Int -> a
+  , _write :: f a -> Int -> a -> f a
   }
 
 iterMachine :: (State a -> MachineF i o (State a)) -> State a -> Machine i o
@@ -35,10 +51,7 @@ iterMachine f = loop
       YieldF o r -> Yield o $ loop r
       DoneF      -> Done
 
-type Memory' f a = Memory (f a) a a
-type Step f a = MachineF a a (State (f a))
-
-step :: Integral a => Memory' f a -> State (f a) -> Step f a
+step :: Integral a => Memory f a -> State (f a) -> MachineF a a (State (f a))
 step (Memory read' write') (State ptr mem program) = case program of
   If bs rest   -> branch bs rest
   Loop bs rest -> loop bs rest
@@ -65,3 +78,36 @@ step (Memory read' write') (State ptr mem program) = case program of
       Jump n -> Continue $ State (ptr + n) mem r
       where
         continueWith mem' = Continue $ State ptr mem' r
+
+class HasCodec a b where
+  encode :: a -> b
+  decode :: b -> a
+  size   :: Int
+
+instance HasCodec Word8 ByteString where
+  encode = BS.singleton
+  decode = BS.head
+  size   = 1
+
+interpretIO :: forall a. (MV.Unbox a, Integral a, HasCodec a ByteString) => EofMode -> Program -> IO ()
+interpretIO em = go . dimap decode encode . iterMachine (step vecMem) . initialState
+  where
+    go = \case
+      Yield o r -> BS.putStr o *> go r
+      Await f   -> BS.hGet stdin (size @a @ByteString) >>= go . f
+      Done      -> pure ()
+    initialState = State 999 $ V.replicate 31000 0
+
+    vecMem :: Memory V.Vector a
+    vecMem = Memory r w
+      where
+        r v p   = v V.! p
+        w v p x = V.modify (\mv -> MV.write mv p x) v
+
+runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
+runInterpretIO m b p = case b of
+  Width8  -> interpretIO @Word8 m p
+  _ -> error $ show b <> " width not yet implemented."
+  -- Width16 -> interpretIO @Word16 m p
+  -- Width32 -> interpretIO @Word32 m p
+  -- Width64 -> interpretIO @Word64 m p
