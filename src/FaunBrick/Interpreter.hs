@@ -2,8 +2,10 @@ module FaunBrick.Interpreter where
 
 import Prelude hiding (read)
 
+import Control.Monad.ST (runST)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Functor (($>))
 import Data.Profunctor (Profunctor(..))
 import Data.Word (Word8)
 import qualified Data.Vector.Unboxed as V
@@ -101,8 +103,11 @@ interpretIO em = go . dimap decode encode . iterMachine (step vecMem) . initialS
     vecMem :: Memory V.Vector a
     vecMem = Memory r w
       where
-        r v p   = v V.! p
-        w v p x = V.modify (\mv -> MV.write mv p x) v
+        r v p   = v `V.unsafeIndex` p
+        w v p x = runST do
+          mv <- V.unsafeThaw v
+          MV.unsafeWrite mv p x
+          V.unsafeFreeze mv
 
 runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
 runInterpretIO m b p = case b of
