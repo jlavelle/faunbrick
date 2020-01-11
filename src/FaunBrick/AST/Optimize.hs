@@ -5,6 +5,7 @@ import Prelude hiding (last)
 import Control.Comonad (extract)
 import Control.Comonad.Cofree (Cofree(..))
 import Control.Monad ((>=>))
+import Data.Foldable (foldl')
 import Data.Functor.Foldable (cata, embed, histo, Corecursive, Base)
 import Data.IntMap.Strict (IntMap)
 import Data.IntSet (IntSet)
@@ -158,7 +159,7 @@ loopsToMul = cata go
 
     -- Run a program in an empty environment and see if it can be rewritten
     simulate :: Program -> Maybe Program
-    simulate = analyze . foldl computeDelta (Map.empty, 0)
+    simulate = analyze . foldl' computeDelta (Map.empty, 0)
 
     -- Computes the effect an instruction has on the environment
     computeDelta :: (IntMap Int, Int) -> Instruction -> (IntMap Int, Int)
@@ -193,7 +194,7 @@ offsets :: Optimization
 offsets = cataBlocks (\_ _ -> True) go
   where
     go program =
-      let (program', offset) = foldl computeOffset (mempty, 0) program
+      let (program', offset) = foldl' computeOffset (mempty, 0) program
           jump = if offset == 0 then Halt else single (Jump offset)
       in program' <> jump
 
@@ -212,7 +213,7 @@ loopsToIfs = cata go
     go x = embed x
 
     simulate :: Program -> Maybe Program
-    simulate = analyze . foldl computeClears (Set.singleton 0, Halt, 0)
+    simulate = analyze . foldl' computeClears (Set.singleton 0, Halt, 0)
 
     computeClears :: (IntSet, Program, Int) -> Instruction -> (IntSet, Program, Int)
     computeClears (clears, prog, origin) = \case

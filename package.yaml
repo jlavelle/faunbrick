@@ -42,6 +42,7 @@ default-extensions:
 - ApplicativeDo
 - AllowAmbiguousTypes
 - BangPatterns
+- BlockArguments
 - ConstraintKinds
 - DataKinds
 - DefaultSignatures
