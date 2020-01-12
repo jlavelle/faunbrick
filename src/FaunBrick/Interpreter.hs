@@ -8,7 +8,8 @@ import qualified Data.ByteString as BS
 import Data.Functor.Foldable (cata)
 import Data.Profunctor (Profunctor(..))
 import Data.Word (Word8)
-import Data.Vector (Vector, (!))
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as UV
 import qualified Data.Vector.Unboxed.Mutable as MV
 import qualified DeferredFolds.Unfoldl as Unfoldl
@@ -62,7 +63,7 @@ data ProgAnn
 -- TODO: Track the length of each block via the cata rather than
 -- using `length`
 toAnnotated :: Program -> Vector ProgAnn
-toAnnotated = Unfoldl.fold Foldl.vector . end . cata go
+toAnnotated = V.imap jumps . Unfoldl.fold Foldl.vector . end . cata go
   where
     go = \case
       HaltF      -> mempty
@@ -76,6 +77,11 @@ toAnnotated = Unfoldl.fold Foldl.vector . end . cata go
 
     end p = p <> pure EndProgram
 
+    jumps i = \case
+      BeginBlock t l -> BeginBlock t $ i + l + 1
+      EndBlock t l   -> EndBlock t   $ i - l
+      x -> x
+
 iterMachine :: (State a -> MachineF i o (State a)) -> State a -> Machine i o
 iterMachine f = loop
   where
@@ -86,17 +92,17 @@ iterMachine f = loop
       DoneF      -> Done
 
 step :: Integral a => Memory f a -> State (f a) -> MachineF a a (State (f a))
-step (Memory read' write') s@(State mptr iptr mem p) = case p ! iptr of
-  BeginBlock _ i | read 0 == 0 -> Continue $ advance (i + 1) s
-                 | otherwise   -> Continue $ advance 1 s
+step (Memory read' write') s@(State mptr iptr mem p) = case p `V.unsafeIndex` iptr of
+  BeginBlock _ i | read 0 == 0 -> Continue $ setInsPtr i s
+                 | otherwise   -> Continue $ setInsPtr (iptr + 1) s
   EndBlock t i -> case t of
-    BlLoop | read 0 == 0 -> Continue $ advance 1 s
-           | otherwise   -> Continue $ advance (- i) s
-    BlIf -> Continue $ advance 1 s
-  Instruction i -> advance 1 <$> runInstr i
+    BlLoop | read 0 == 0 -> Continue $ setInsPtr (iptr + 1) s
+           | otherwise   -> Continue $ setInsPtr i s
+    BlIf -> Continue $ setInsPtr (iptr + 1) s
+  Instruction i -> setInsPtr (iptr + 1) <$> runInstr i -- TODO remove the fmap
   EndProgram    -> DoneF
   where
-    advance n x = x { _insPointer = _insPointer x + n }
+    setInsPtr n x = x { _insPointer = n }
     read o      = read' mem (mptr + o)
     write o     = write' mem (mptr + o)
     modify o f  = write o $ f $ read o
