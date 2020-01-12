@@ -99,24 +99,25 @@ step (Memory read' write') s@(State mptr iptr mem p) = case p `V.unsafeIndex` ip
     BlLoop | read 0 == 0 -> Continue $ setInsPtr (iptr + 1) s
            | otherwise   -> Continue $ setInsPtr i s
     BlIf -> Continue $ setInsPtr (iptr + 1) s
-  Instruction i -> setInsPtr (iptr + 1) <$> runInstr i -- TODO remove the fmap
+  Instruction i -> runInstr i
   EndProgram    -> DoneF
   where
     setInsPtr n x = x { _insPointer = n }
-    read o      = read' mem (mptr + o)
-    write o     = write' mem (mptr + o)
-    modify o f  = write o $ f $ read o
+
+    read o     = read' mem $ mptr + o
+    write o    = write' mem $ mptr + o
+    modify o f = write o $ f $ read o
 
     runInstr ins = case ins of
-      Output o        -> YieldF (read o) s
-      Input o         -> AwaitF \inp -> s { _memory = write o inp }
+      Output o        -> YieldF (read o) $ s { _insPointer = iptr + 1 }
+      Input o         -> AwaitF \inp -> s { _memory = write o inp, _insPointer = iptr + 1 }
       Update o n      -> continueWith $ modify o (+ fromIntegral n)
       Set o n         -> continueWith $ write o $ fromIntegral n
       MulSet x d n    -> continueWith $ write d $ read x * fromIntegral n
       MulUpdate x d n -> continueWith $ modify d (+ (read x * fromIntegral n))
-      Jump n -> Continue $ s { _memPointer = _memPointer s + n }
+      Jump n -> Continue $ s { _memPointer = _memPointer s + n, _insPointer = iptr + 1 }
       where
-        continueWith mem' = Continue $ s { _memory = mem' }
+        continueWith mem' = Continue $ s { _memory = mem', _insPointer = iptr + 1 }
 
 class HasCodec a b where
   encode :: a -> b
