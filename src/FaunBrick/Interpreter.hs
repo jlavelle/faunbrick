@@ -5,7 +5,6 @@ import Prelude hiding (read)
 import Control.Monad.ST (runST)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Functor (($>))
 import Data.Profunctor (Profunctor(..))
 import Data.Word (Word8)
 import qualified Data.Vector.Unboxed as V
@@ -43,6 +42,15 @@ data Memory f a = Memory
   { _read  :: f a -> Int -> a
   , _write :: f a -> Int -> a -> f a
   }
+
+newtype Id = Id Int
+
+data Annotated
+  = BeginLoop Id Int
+  | EndLoop Id
+  | BeginIf Id Int
+  | EndIf Id
+  | Instruction Instruction
 
 iterMachine :: (State a -> MachineF i o (State a)) -> State a -> Machine i o
 iterMachine f = loop
