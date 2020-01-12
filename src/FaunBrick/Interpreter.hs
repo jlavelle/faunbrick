@@ -5,13 +5,17 @@ import Prelude hiding (read)
 import Control.Monad.ST (runST)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Functor.Foldable (cata)
 import Data.Profunctor (Profunctor(..))
 import Data.Word (Word8)
-import qualified Data.Vector.Unboxed as V
+import Data.Vector (Vector)
+import qualified Data.Vector.Unboxed as UV
 import qualified Data.Vector.Unboxed.Mutable as MV
+import qualified DeferredFolds.Unfoldl as Unfoldl
+import qualified Control.Foldl as Foldl
 import System.IO (stdin)
 
-import FaunBrick.AST (Program, FaunBrick(..), Instruction(..))
+import FaunBrick.AST (Program, FaunBrick(..), FaunBrickF(..), Instruction(..))
 import FaunBrick.Common.Types (BitWidth(..), EofMode(..))
 
 data MachineF i o r
@@ -43,14 +47,28 @@ data Memory f a = Memory
   , _write :: f a -> Int -> a -> f a
   }
 
-newtype Id = Id Int
-
 data Annotated
-  = BeginLoop Id Int
-  | EndLoop Id
-  | BeginIf Id Int
-  | EndIf Id
+  = BeginLoop Int
+  | EndLoop Int
+  | BeginIf Int
+  | EndIf Int
   | Instruction Instruction
+  | EndProgram
+
+toAnnotated :: Program -> Vector Annotated
+toAnnotated = Unfoldl.fold Foldl.vector . end . cata go
+  where
+    go = \case
+      HaltF      -> mempty
+      InstrF i r -> pure (Instruction i) <> r
+      LoopF a b  -> block BeginLoop EndLoop a b
+      IfF a b    -> block BeginIf EndIf a b
+
+    block s e a b =
+      let l = Unfoldl.fold Foldl.length a
+      in pure (s l) <> a <> pure (e l) <> b
+
+    end p = p <> pure EndProgram
 
 iterMachine :: (State a -> MachineF i o (State a)) -> State a -> Machine i o
 iterMachine f = loop
@@ -106,16 +124,16 @@ interpretIO em = go . dimap decode encode . iterMachine (step vecMem) . initialS
       Yield o r -> BS.putStr o *> go r
       Await f   -> BS.hGet stdin (size @a @ByteString) >>= go . f
       Done      -> pure ()
-    initialState = State 999 $ V.replicate 31000 0
+    initialState = State 999 $ UV.replicate 31000 0
 
-    vecMem :: Memory V.Vector a
+    vecMem :: Memory UV.Vector a
     vecMem = Memory r w
       where
-        r v p   = v `V.unsafeIndex` p
+        r v p   = v `UV.unsafeIndex` p
         w v p x = runST do
-          mv <- V.unsafeThaw v
+          mv <- UV.unsafeThaw v
           MV.unsafeWrite mv p x
-          V.unsafeFreeze mv
+          UV.unsafeFreeze mv
 
 runInterpretIO :: EofMode -> BitWidth -> Program -> IO ()
 runInterpretIO m b p = case b of

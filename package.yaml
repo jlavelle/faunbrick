@@ -31,6 +31,8 @@ dependencies:
 - tagged
 - streaming
 - profunctors
+- foldl
+- deferred-folds
 
 ghc-options:
 - -Wall
